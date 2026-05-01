@@ -1,81 +1,94 @@
 # 🤖 AI System Prompt & Project Context (BorrowerPortal)
 
-> **AI INSTRUCTION:** If you are a new AI assistant (e.g., Cursor, Codeium, GitHub Copilot) reading this repository for the first time, this file contains the absolute source of truth for the project's architecture, design philosophy, and current state. **Read this entirely before making any changes.**
+> **AI INSTRUCTION:** If you are a new AI assistant reading this repository for the first time, this file is the absolute source of truth. **Read this entirely before making any changes.**
 
 ---
 
 ## 1. Project Overview: MajesticEquity
-**MajesticEquity** (SaaSMortgage / BorrowerPortal) is a production-ready, full-stack Node.js mortgage operations platform. It serves as both a public marketing site and a highly secure, real-time portal for borrowers, brokers, and admins to process mortgage applications.
+**MajesticEquity** is a production-grade, full-stack Node.js mortgage operations platform. It serves as both a public marketing site and a highly secure, real-time portal for borrowers, brokers, and agents.
 
 ### 🛠️ Core Tech Stack
-*   **Backend:** Node.js (v18+), Express.js
-*   **Database:** MongoDB via Mongoose (Hosted on MongoDB Atlas)
-*   **Frontend:** Vanilla HTML5, Vanilla JavaScript (`portal.js` monolith), CSS3, Tailwind CSS
-*   **Real-Time:** Socket.IO (WebSockets for chat and instant status updates)
-*   **Security:** JWT, bcryptjs, Helmet, Express-Rate-Limit, CORS
-*   **Infrastructure:** Render.com (`render.yaml` Blueprint), `npm run dev` (using `node --watch`)
+*   **Backend:** Node.js (v18+), Express.js — modular architecture (see §2)
+*   **Database:** MongoDB via Mongoose (Atlas), with connection pooling & explicit indexes
+*   **Frontend:** Vanilla JS (`portal.js` monolith), Tailwind CSS, Material Symbols
+*   **Real-Time:** Socket.IO (WebSockets for chat and live status updates)
+*   **Security:** JWT, bcryptjs, Helmet, express-rate-limit, Joi validation, XSS sanitization
+*   **Logging:** Winston (structured JSON in prod), Sentry (error tracking)
+*   **Uploads:** AWS S3 (production) with pre-signed URLs; local disk fallback (dev)
+*   **Infrastructure:** Render.com (`render.yaml` Blueprint)
 
 ### 🔌 Third-Party Integrations
-*   **Plaid:** Bank syncing (auth, transactions, assets) for income/asset verification.
-*   **Persona:** KYC Identity Verification via server-to-server validation.
-*   **Stripe:** Processing appraisal fee payments via Webhooks.
-*   **Experian (Sandbox):** Credit pull simulations.
-*   **Twilio:** SMS dispatch for MFA and Registration Verification.
-*   **SendGrid / Nodemailer:** Automated email notifications.
+*   **Plaid:** Bank syncing (auth, transactions, assets)
+*   **Persona:** KYC Identity Verification (server-to-server) — 3-layer agent verification
+*   **Stripe:** Appraisal fee payments via Webhooks
+*   **Experian (Sandbox):** Credit pull simulations
+*   **Twilio:** SMS for MFA and registration verification
+*   **Nodemailer:** Email notifications
 
 ---
 
-## 2. Repository Map & Key Files
+## 2. Repository Map & Architecture
 
-The codebase does *not* use a frontend framework like React or Next.js. It relies on a monolith vanilla JS architecture.
+### Modular Backend (Post-Refactor May 2026)
+```
+server.js              → Main Express entry point (routes only, no business logic definitions)
+├── services/
+│   ├── logger.js      → Winston + Sentry (structured logging, error capture)
+│   ├── database.js    → Mongoose connection pooling + index management
+│   ├── envValidator.js→ Startup validation (fails fast if secrets are missing in prod)
+│   ├── fileUpload.js  → AWS S3 / local disk file upload with pre-signed URLs
+│   └── notifications.js → Email (Nodemailer) + SMS (Twilio)
+├── middlewares/
+│   ├── auth.js        → authenticateToken, requireAdmin, requireApprovedAgent, errorHandler
+│   └── validation.js  → Joi schemas + validate() middleware factory
+├── models/
+│   ├── User.js, Application.js, Document.js
+│   ├── AgentProfile.js, AgentInvite.js, PlaidItem.js
+├── utils/
+│   ├── agentVerification.js → FSRA registry scraper
+│   ├── agentNetwork.js      → Invite & access control helpers
+│   └── fnmExporter.js       → Fannie Mae 3.2 export
+├── test/
+│   └── validation.test.js   → Jest unit tests for Joi schemas
+```
 
-*   `server.js` ➡️ **The Backend Monolith.** Contains all API routes, Express configuration, WebSocket setup, Multer file uploads, PDFKit generation, and Stripe webhooks.
-*   `portal.js` ➡️ **The Frontend Monolith.** Contains all client-side logic, DOM manipulation, authentication state, and UI rendering.
-*   `index.html` ➡️ The single app shell and DOM mount point.
-*   `style.css` ➡️ Core design tokens and custom CSS that complement Tailwind.
-*   `render.yaml` ➡️ Infrastructure-as-Code blueprint for Render.com automated deployment.
-*   `models/` ➡️ Mongoose schemas (`User.js`, `Application.js`, `Document.js`, `PlaidItem.js`).
-*   `utils/fnmExporter.js` ➡️ Generates industry-standard Fannie Mae 3.2 (.fnm) exports.
-
----
-
-## 3. Strict AI Development Rules
-
-### 🎨 Design System: "The Editorial Guardian"
-You must adhere strictly to the custom premium UI guidelines:
-1.  **No-Line Rule:** Do not use 1px solid borders. Create structure using background color shifts (e.g., `surface` to `surface-container-low`) or "Ghost Borders" (15% opacity).
-2.  **Glassmorphism:** Use translucent cards with `backdrop-blur` and subtle ambient glows instead of hard drop shadows.
-3.  **Typography:** Use high contrast between *Manrope* (Headlines/Display) and *Inter* (Body/UI).
-4.  **Colors:** Deep navy/muted blues for base. **Champagne Gold (`#D3BD73`)** is the primary conversion/CTA accent.
-5.  **Icons:** Google Material Symbols ONLY. No Phosphor or FontAwesome.
-
-### 🔒 Security & Data Flow
-1.  **Zero-Access Security:** All protected routes must pass through the `authenticateToken` JWT middleware.
-2.  **Strict Step-by-Step Locking:** The frontend 1003 application wizard locks steps. Step 2 cannot unlock unless Step 1 is verified in the MongoDB record.
-3.  **MFA Requirement:** The system uses a Hybrid Multi-Factor Authentication (Email + Twilio SMS / TOTP Authenticator).
-
-### ⚡ Performance
-1.  **Assets:** Use `.webp` exclusively for imagery. 
-2.  **Monolith Edits:** When modifying UI, you must edit the DOM in `index.html` and attach the listeners/logic in `portal.js`. Do not attempt to introduce React components.
+### Frontend
+*   `portal.js` → ~3,500-line monolith (planned React migration)
+*   `index.html` → Single app shell
+*   `style.css` → Design tokens + custom CSS
+*   `config.js` → Public-facing site config
 
 ---
 
-## 4. Current State & Where We Left Off (May 2026)
+## 3. Agent 3-Layer Identity Verification
+1. **Layer 1 — Persona:** Gov ID scan + live selfie liveness check
+2. **Layer 2 — FSRA Registry:** Automated scrape of Ontario FSRA/FSCO registry
+3. **Layer 3 — Admin Review:** Manual admin approval via `PATCH /api/admin/agents/:profileId`
 
-### Recent Accomplishments
-1.  **Deployment:** The app is fully configured for automated CI/CD on **Render.com** using the `render.yaml` blueprint. The `plan: free` is explicitly set to bypass credit card requirements.
-2.  **Database Connection:** The `.env` MongoDB connection string was corrected and tested. 
-3.  **Persona Configuration:** The UI previously threw a "PERSONA TEMPLATE ID NOT CONFIGURED" error. This was fixed by adding `PERSONA_TEMPLATE_ID` to the `render.yaml` and instructing the user to add it to the Render dashboard.
-4.  **Local Dev Workflow:** `package.json` was updated so `npm run dev` runs `node --watch server.js`, eliminating the need to manually restart the server.
+Flow: `pending_identity` → `pending_registry` → `pending_admin` → `approved`
 
-### Environment Setup Instructions
-If starting fresh on a new machine:
-1. Run `npm install`
-2. Ensure you have a `.env` file with the variables listed in `render.yaml` (including `MONGODB_URI`, `JWT_SECRET`, `PLAID_*`, `STRIPE_*`, `PERSONA_*`, `TWILIO_*`).
-3. Run `npm run dev` to start the backend on port 3000.
-4. *Note on Production:* We are moving away from local `.env` files for production. Production secrets are handled natively in the Render Dashboard. The domain `abinanj.com` is configured to map to Render via DNS CNAME records.
+---
 
-### Next Immediate Steps
-*   Ensure all Persona server-to-server webhook validations are passing in production.
-*   Verify Stripe webhook processing for the appraisal fee on the live Render URL.
-*   Continue expanding the Admin dashboard features or 1003 mortgage wizard as requested.
+## 4. Strict AI Development Rules
+
+### 🎨 Design: "The Editorial Guardian"
+1.  No 1px borders — use background shifts or ghost borders (15% opacity)
+2.  Glassmorphism with `backdrop-blur` and ambient glows
+3.  Typography: Manrope (headings) + Inter (body)
+4.  Champagne Gold (`#D3BD73`) for CTAs
+5.  Google Material Symbols ONLY
+
+### 🔒 Security
+1.  All protected routes go through `authenticateToken` JWT middleware
+2.  All inputs validated via Joi schemas in `middlewares/validation.js`
+3.  MFA: Email OTP or TOTP (Google Authenticator)
+4.  Persona verification is server-to-server (never trust client status)
+
+---
+
+## 5. Environment Variables
+**Required in production** (server refuses to start without these):
+`MONGODB_URI`, `JWT_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `PERSONA_API_KEY`, `PERSONA_TEMPLATE_ID`
+
+**Optional but recommended:**
+`PLAID_*`, `TWILIO_*`, `SMTP_*`, `SENTRY_DSN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `AWS_REGION`
