@@ -28,13 +28,13 @@ const Application = require('./models/Application');
 // =============================================
 // DATABASE CONNECTION
 // =============================================
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/askjuthis';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/majesticequity';
 mongoose.connect(MONGODB_URI)
     .then(() => console.log('✅ Connected to MongoDB'))
     .catch((err) => console.error('❌ MongoDB Connection Error:', err));
 
 const DEV_USER_ID = '507f1f77bcf86cd799439011';
-const JWT_SECRET = process.env.JWT_SECRET || 'askjuthis_dev_secret_2026';
+const JWT_SECRET = process.env.JWT_SECRET || 'majesticequity_dev_secret_2026';
 
 // =============================================
 // EXPRESS APP + SECURITY
@@ -188,7 +188,7 @@ async function sendEmail(to, subject, html) {
     }
     try {
         await emailTransporter.sendMail({
-            from: `"AskJuthis" <${process.env.EMAIL_FROM || process.env.SMTP_USER}>`,
+            from: `"MajesticEquity" <${process.env.EMAIL_FROM || process.env.SMTP_USER}>`,
             to,
             subject,
             html
@@ -255,7 +255,7 @@ async function generatePreApprovalPDF(application) {
             doc.moveDown();
             doc.text(`Dear ${application.userName || 'Valued Customer'},`);
             doc.moveDown();
-            doc.text(`We are pleased to inform you that upon review of your application, AskJuthis has approved you for a mortgage in the amount of:`);
+            doc.text(`We are pleased to inform you that upon review of your application, MajesticEquity has approved you for a mortgage in the amount of:`);
             doc.moveDown();
             doc.fontSize(20).fillColor('#D3BD73').text(`$${application.loanAmount.toLocaleString()}`, { align: 'center', bold: true });
             doc.fillColor('black').fontSize(12);
@@ -266,7 +266,7 @@ async function generatePreApprovalPDF(application) {
             // Signature
             doc.text('Best Regards,');
             doc.fontSize(14).font('Helvetica-Bold').text('Juthi Akhy');
-            doc.fontSize(10).font('Helvetica').text('Master Broker | AskJuthis Mortgages');
+            doc.fontSize(10).font('Helvetica').text('Master Broker | MajesticEquity Mortgages');
 
             doc.end();
 
@@ -313,16 +313,12 @@ function authenticateToken(req, res, next) {
     const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
-        req.userEmail = 'dev@askjuthis.com';
-        req.userRole = 'borrower';
-        return next();
+        return res.status(401).json({ error: 'Access denied. No token provided.' });
     }
 
     jwt.verify(token, JWT_SECRET, (err, decoded) => {
         if (err) {
-            req.userEmail = 'dev@askjuthis.com';
-            req.userRole = 'borrower';
-            return next();
+            return res.status(403).json({ error: 'Invalid or expired token.' });
         }
         req.userEmail = decoded.email;
         req.userId = decoded.id;
@@ -332,10 +328,9 @@ function authenticateToken(req, res, next) {
 }
 
 function requireAdmin(req, res, next) {
-    // TEMPORARY: disabled for testing purposes so any logged-in user can view the admin dashboard
-    // if (req.userRole !== 'admin') {
-    //     return res.status(403).json({ error: 'Admin access required.' });
-    // }
+    if (req.userRole !== 'admin') {
+        return res.status(403).json({ error: 'Admin access required.' });
+    }
     next();
 }
 
@@ -374,8 +369,8 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
                 expiresAt: new Date(Date.now() + 15 * 60 * 1000)
             };
         } else {
-            // Auto-assign admin role for admin@askjuthis.com
-            const role = email.toLowerCase() === 'admin@askjuthis.com' ? 'admin' : 'borrower';
+            // Auto-assign admin role for admin@majesticequity.com
+            const role = email.toLowerCase() === 'admin@majesticequity.com' ? 'admin' : 'borrower';
             
             user = new User({
                 email: email.toLowerCase(),
@@ -394,9 +389,9 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         await user.save();
 
         // Send Email Code
-        await sendEmail(user.email, 'Verify Your Account — AskJuthis', `
+        await sendEmail(user.email, 'Verify Your Account — MajesticEquity', `
             <div style="font-family: 'Manrope', sans-serif; padding: 20px; color: #1a365d;">
-                <h2>Welcome to AskJuthis!</h2>
+                <h2>Welcome to MajesticEquity!</h2>
                 <p>Please enter the following code to verify your email address:</p>
                 <div style="font-size: 32px; font-weight: bold; letter-spacing: 10px; color: #D3BD73; margin: 30px 0; background: #f8fafc; padding: 20px; display: inline-block; border-radius: 8px;">${emailCode}</div>
                 <p>This code will expire in 15 minutes.</p>
@@ -404,7 +399,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         `);
 
         // Send SMS Code
-        await sendSMS(phone, `Your AskJuthis verification code is ${phoneCode}. Valid for 15m.`);
+        await sendSMS(phone, `Your MajesticEquity verification code is ${phoneCode}. Valid for 15m.`);
 
         res.json({
             success: true,
@@ -413,6 +408,89 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         });
     } catch (error) {
         console.error('Register Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/auth/register-agent', authLimiter, async (req, res) => {
+    try {
+        const { name, email, phone, password, nmlsId, brokerageName, licenseState } = req.body;
+
+        // Validation - Agents must provide professional credentials
+        if (!name || !email || !phone || !password || !nmlsId || !brokerageName || !licenseState) {
+            return res.status(400).json({ error: 'All professional fields (NMLS, Brokerage, License State) are required for agents.' });
+        }
+
+        let user = await User.findOne({ email: email.toLowerCase() });
+        if (user && user.isVerified) {
+            return res.status(400).json({ error: 'An account with this email already exists.' });
+        }
+
+        const emailCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const phoneCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        if (user) {
+            // Unverified abandoned account. Overwrite with agent details.
+            user.name = name;
+            user.phone = phone;
+            user.password = hashedPassword;
+            user.role = 'agent';
+            user.nmlsId = nmlsId;
+            user.brokerageName = brokerageName;
+            user.licenseState = licenseState;
+            user.verificationCodes = {
+                emailCode: await bcrypt.hash(emailCode, salt),
+                phoneCode: await bcrypt.hash(phoneCode, salt),
+                expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+            };
+        } else {
+            user = new User({
+                email: email.toLowerCase(),
+                phone,
+                password: hashedPassword,
+                name: name,
+                role: 'agent',
+                nmlsId,
+                brokerageName,
+                licenseState,
+                isVerified: false,
+                verificationCodes: {
+                    emailCode: await bcrypt.hash(emailCode, salt),
+                    phoneCode: await bcrypt.hash(phoneCode, salt),
+                    expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+                }
+            });
+        }
+        await user.save();
+
+        // Professional Welcome Email
+        await sendEmail(user.email, 'Join the MajesticEquity Expert Network', `
+            <div style="font-family: 'Manrope', sans-serif; padding: 20px; color: #1a365d;">
+                <h2 style="color: #D3BD73;">Professional Partner Verification</h2>
+                <p>Welcome to the MajesticEquity expert network, <strong>${name}</strong>.</p>
+                <p>Please use the following code to verify your professional account:</p>
+                <div style="font-size: 32px; font-weight: bold; letter-spacing: 10px; color: #D3BD73; margin: 30px 0; background: #f8fafc; padding: 20px; display: inline-block; border-radius: 8px;">${emailCode}</div>
+                <p>Registered Professional Credentials:</p>
+                <ul>
+                    <li>NMLS ID: ${nmlsId}</li>
+                    <li>Brokerage: ${brokerageName}</li>
+                    <li>License State: ${licenseState}</li>
+                </ul>
+                <p>This code will expire in 15 minutes.</p>
+            </div>
+        `);
+
+        await sendSMS(phone, `MajesticEquity Agent Verification: ${phoneCode}. Welcome to our expert network!`);
+
+        res.json({
+            success: true,
+            verificationRequired: true,
+            email: user.email
+        });
+    } catch (error) {
+        console.error('Agent Register Error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -452,7 +530,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
                 user.mfaExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
                 await user.save();
 
-                await sendEmail(user.email, 'Verification Code — AskJuthis', `
+                await sendEmail(user.email, 'Verification Code — MajesticEquity', `
                     <div style="font-family: 'Manrope', sans-serif; padding: 20px; color: #1a365d;">
                         <h2>Your Verification Code</h2>
                         <p>Enter the following code to complete your login:</p>
@@ -475,7 +553,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
             }
         }
 
-        if (user.email.toLowerCase() === 'admin@askjuthis.com' && user.role !== 'admin') {
+        if (user.email.toLowerCase() === 'admin@majesticequity.com' && user.role !== 'admin') {
             user.role = 'admin';
             await user.save();
         }
@@ -561,8 +639,8 @@ app.post('/api/auth/mfa/setup', authenticateToken, async (req, res) => {
         if (!user) return res.status(404).json({ error: 'User not found' });
 
         const secret = speakeasy.generateSecret({
-            name: `AskJuthis (${user.email})`,
-            issuer: 'AskJuthis'
+            name: `MajesticEquity (${user.email})`,
+            issuer: 'MajesticEquity'
         });
 
         const qrCodeDataUrl = await QRCode.toDataURL(secret.otpauth_url);
@@ -693,7 +771,7 @@ app.post('/api/create_link_token', authenticateToken, async (req, res) => {
 
         const response = await client.linkTokenCreate({
             user: { client_user_id: req.userId || 'dev-user-' + Date.now() },
-            client_name: 'AskJuthis Mortgages',
+            client_name: 'MajesticEquity Mortgages',
             products: products,
             country_codes: countryCodes,
             language: 'en',
@@ -713,9 +791,10 @@ app.post('/api/exchange_public_token', authenticateToken, async (req, res) => {
         const itemID = response.data.item_id;
 
         const user = await User.findOne({ email: req.userEmail });
+        if (!user) return res.status(404).json({ error: 'User not found.' });
 
         const newItem = new PlaidItem({
-            userId: user ? user._id : DEV_USER_ID,
+            userId: user._id,
             accessToken: accessToken,
             itemId: itemID,
             institutionName: 'Linked Bank'
@@ -748,10 +827,10 @@ app.post('/api/create_inquiry', authenticateToken, async (req, res) => {
             return res.status(500).json({ error: 'Persona Template ID not configured.' });
         }
 
-        console.log(`🚀 Creating Persona Inquiry for: ${req.userEmail || 'dev'}`);
+        console.log(`🚀 Creating Persona Inquiry for: ${req.userEmail}`);
         res.json({
             templateId: templateId,
-            referenceId: req.userEmail || DEV_USER_ID
+            referenceId: req.userEmail
         });
     } catch (error) {
         console.error('❌ Persona Inquiry Error:', error);
@@ -974,9 +1053,10 @@ app.post('/api/documents/upload', authenticateToken, upload.single('file'), asyn
         }
 
         const user = await User.findOne({ email: req.userEmail });
+        if (!user) return res.status(404).json({ error: 'User not found.' });
 
         const doc = new Document({
-            userId: user ? user._id : DEV_USER_ID,
+            userId: user._id,
             userEmail: req.userEmail,
             filename: req.file.filename,
             originalName: req.file.originalname,
@@ -985,6 +1065,18 @@ app.post('/api/documents/upload', authenticateToken, upload.single('file'), asyn
             category: req.body.category || 'Other'
         });
         await doc.save();
+
+        if (req.body.conditionId && req.body.applicationId) {
+            await Application.findOneAndUpdate(
+                { _id: req.body.applicationId, "conditions._id": req.body.conditionId },
+                { 
+                    $set: { 
+                        "conditions.$.status": "Uploaded",
+                        "conditions.$.documentId": doc._id
+                    }
+                }
+            );
+        }
 
         console.log(`📄 Document uploaded: ${doc.originalName} by ${req.userEmail}`);
         res.json({ success: true, document: doc });
@@ -1106,7 +1198,7 @@ app.post('/api/applications/submit', authenticateToken, async (req, res) => {
         }
 
         // Send email notification
-        await sendEmail(req.userEmail, 'Application Submitted — AskJuthis', `
+        await sendEmail(req.userEmail, 'Application Submitted — MajesticEquity', `
             <h2>Your Application Has Been Submitted!</h2>
             <p>Hi ${user.name || 'there'},</p>
             <p>We've received your mortgage application. Our team will review it within 24-48 hours.</p>
@@ -1216,7 +1308,7 @@ app.post('/api/applications/sample', authenticateToken, async (req, res) => {
             },
             messages: [
                 {
-                    sender: 'admin@askjuthis.com',
+                    sender: 'admin@majesticequity.com',
                     senderName: 'Broker Team',
                     senderRole: 'admin',
                     message: 'Welcome to your sample application! All your data has been verified via our automated sync.',
@@ -1372,8 +1464,8 @@ app.post('/api/applications/:id/messages', authenticateToken, async (req, res) =
         });
 
         // Notify the other party
-        const recipient = req.userRole === 'admin' ? application.userEmail : 'admin@askjuthis.com';
-        await sendEmail(recipient, 'New Message — AskJuthis Portal', `
+        const recipient = req.userRole === 'admin' ? application.userEmail : 'admin@majesticequity.com';
+        await sendEmail(recipient, 'New Message — MajesticEquity Portal', `
             <h3>You have a new message</h3>
             <p><strong>From:</strong> ${senderName}</p>
             <p>${newMessage.message}</p>
@@ -1480,6 +1572,71 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
     }
 });
 
+// =============================================
+// ADMIN: CONDITIONS (NEEDS LIST)
+// =============================================
+
+app.post('/api/admin/applications/:id/conditions', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const application = await Application.findById(req.params.id);
+        if (!application) return res.status(404).json({ error: 'Application not found.' });
+
+        if (!req.body.name) return res.status(400).json({ error: 'Condition name is required.' });
+
+        application.conditions.push({
+            name: req.body.name,
+            brokerNote: req.body.brokerNote || '',
+            status: 'Pending'
+        });
+        
+        await application.save();
+
+        // Notify borrower
+        await sendEmail(application.userEmail, `New Document Request — MajesticEquity`, `
+            <h2>Document Request</h2>
+            <p>Your broker has requested a new document for your mortgage application:</p>
+            <p><strong>${req.body.name}</strong></p>
+            <p><a href="http://localhost:3000">Log in to your portal</a> to upload it.</p>
+        `);
+
+        // Emit reload event
+        req.app.get('io').emit('status_update', { appId: application._id, updateType: 'conditions' });
+
+        res.json({ success: true, conditions: application.conditions });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.patch('/api/admin/applications/:id/conditions/:conditionId', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const application = await Application.findById(req.params.id);
+        if (!application) return res.status(404).json({ error: 'Application not found.' });
+
+        const condition = application.conditions.id(req.params.conditionId);
+        if (!condition) return res.status(404).json({ error: 'Condition not found.' });
+
+        if (req.body.status) condition.status = req.body.status;
+        if (req.body.brokerNote !== undefined) condition.brokerNote = req.body.brokerNote;
+
+        await application.save();
+
+        // Let the borrower know if a condition was accepted/rejected
+        if (req.body.status === 'Rejected') {
+            await sendEmail(application.userEmail, `Document Rejected — Action Required`, `
+                <h2>Document Rejected</h2>
+                <p>Unfortunately, the document you uploaded for <strong>${condition.name}</strong> was rejected.</p>
+                <p><strong>Note:</strong> ${condition.brokerNote}</p>
+                <p><a href="http://localhost:3000">Log in to your portal</a> to upload a corrected version.</p>
+            `);
+        }
+
+        res.json({ success: true, conditions: application.conditions });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.get('/api/admin/stats', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const totalUsers = await User.countDocuments({ role: 'borrower' });
@@ -1504,7 +1661,7 @@ app.post('/api/admin/create', async (req, res) => {
         const { email, password, adminKey } = req.body;
 
         // Require a secret key to create admin accounts
-        if (adminKey !== (process.env.ADMIN_CREATE_KEY || 'askjuthis_admin_2026')) {
+        if (adminKey !== (process.env.ADMIN_CREATE_KEY || 'majesticequity_admin_2026')) {
             return res.status(403).json({ error: 'Invalid admin creation key.' });
         }
 
@@ -1590,9 +1747,9 @@ app.post('/api/auth/resend-verification', async (req, res) => {
         };
         await user.save();
 
-        await sendEmail(user.email, 'New Verification Code — AskJuthis', `<div style="padding:20px; font-family:sans-serif;"><h2>Code: ${emailCode}</h2></div>`);
+        await sendEmail(user.email, 'New Verification Code — MajesticEquity', `<div style="padding:20px; font-family:sans-serif;"><h2>Code: ${emailCode}</h2></div>`);
         // Send SMS Code
-        await sendSMS(user.phone, `Your AskJuthis verification code is ${phoneCode}. Valid for 15m.`);
+        await sendSMS(user.phone, `Your MajesticEquity verification code is ${phoneCode}. Valid for 15m.`);
 
         res.json({ success: true });
     } catch (error) {
@@ -1606,7 +1763,7 @@ app.post('/api/auth/resend-verification', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`\n🚀 AskJuthis Backend & WebSockets active at http://localhost:${PORT}`);
+    console.log(`\n🚀 MajesticEquity Backend & WebSockets active at http://localhost:${PORT}`);
     console.log(`\n   AUTH:    POST /api/auth/register, /api/auth/login`);
     console.log(`   PLAID:   POST /api/create_link_token, /api/exchange_public_token`);
     console.log(`   VERIFY:  POST /api/create_inquiry, /api/persona_complete, /api/credit_pull`);

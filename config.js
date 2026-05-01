@@ -8,7 +8,7 @@
 const agentConfig = {
     // Basic Information
     branding: {
-        companyName: "ASK JUTHIS", // Appears in navbar
+        companyName: "MajesticEquity", // Appears in navbar
         accentColor: "#0F1E2E",          // Deep Navy
         secondaryColor: "#4A5D73",       // Slate Blue
         warmColor: "#F4F1EE"             // Warm
@@ -21,7 +21,7 @@ const agentConfig = {
         photoUrl: "headshot.webp",
         testimonials: [
             {
-                quote: "AskJuthis made buying our first home surprisingly easy. They took the time to answer all our frantic questions and got us a rate we didn't think was possible!",
+                quote: "MajesticEquity made buying our first home surprisingly easy. They took the time to answer all our frantic questions and got us a rate we didn't think was possible!",
                 author: "The Miller Family",
                 role: "First-time Homebuyers"
             },
@@ -31,7 +31,7 @@ const agentConfig = {
                 role: "Refinance Client"
             },
             {
-                quote: "The team at AskJuthis is incredibly professional and knowledgeable. They found us a great rate and made the entire application process stress-free.",
+                quote: "The team at MajesticEquity is incredibly professional and knowledgeable. They found us a great rate and made the entire application process stress-free.",
                 author: "Michael & Emily",
                 role: "Investment Property Owners"
             }
@@ -42,7 +42,7 @@ const agentConfig = {
     contact: {
         phone: "(555) 123-4567",
         phoneLink: "5551234567", // For tel: links
-        email: "hello@askjuthis.com",
+        email: "hello@majesticequity.com",
         officeAddress: "Ottawa, ON",
         bookingWidgetUrl: "https://calendly.com/abinan-jeyachandran/30min",
         bookingUrl: "#booking" // Adjusted to match new ID
@@ -50,7 +50,7 @@ const agentConfig = {
 
     social: {
         linkedin: "https://www.linkedin.com/in/juthis-kuper/",
-        instagram: "https://www.instagram.com/askjuthis/",
+        instagram: "https://www.instagram.com/majesticequity/",
         x: "https://x.com"
     },
 

@@ -22,9 +22,13 @@ const UserSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['borrower', 'admin'],
+        enum: ['borrower', 'admin', 'agent'],
         default: 'borrower'
     },
+    // Agent-specific professional data 🏦
+    nmlsId: { type: String },
+    brokerageName: { type: String },
+    licenseState: { type: String },
     currentStep: { type: Number, default: 1 },
     status: { type: String, default: 'In Progress' },
     identityStatus: { type: String, default: 'Not Started' },

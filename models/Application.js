@@ -98,6 +98,15 @@ const ApplicationSchema = new mongoose.Schema({
         sex: { type: String, default: 'DoNotWishToProvide' }
     },
 
+    // Dynamic Conditions (Needs List)
+    conditions: [{
+        name: { type: String, required: true },
+        status: { type: String, enum: ['Pending', 'Uploaded', 'Accepted', 'Rejected'], default: 'Pending' },
+        documentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Document' },
+        brokerNote: { type: String, default: '' },
+        createdAt: { type: Date, default: Date.now }
+    }],
+
     // Documents linked
     documents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Document' }],
 

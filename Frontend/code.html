@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+
+<html class="scroll-smooth" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AskJuthis | The Modern Way to Mortgage</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Manrope:wght@400;500;600;700;800&amp;family=Pinyon+Script&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-primary-fixed": "#0d1c2c",
+              "surface-container-high": "#e7e8e9",
+              "on-surface-variant": "#44474c",
+              "on-error-container": "#93000a",
+              "tertiary-fixed-dim": "#b4c8e2",
+              "inverse-surface": "#2e3132",
+              "outline": "#74777d",
+              "surface": "#f8f9fa",
+              "on-error": "#ffffff",
+              "on-tertiary-fixed-variant": "#35485d",
+              "surface-container-low": "#f3f4f5",
+              "primary-fixed": "#d5e4fa",
+              "on-surface": "#191c1d",
+              "surface-container-highest": "#e1e3e4",
+              "on-tertiary": "#ffffff",
+              "inverse-on-surface": "#f0f1f2",
+              "tertiary": "#000308",
+              "tertiary-fixed": "#d0e4ff",
+              "on-secondary-container": "#726121",
+              "primary": "#000309",
+              "background": "#f8f9fa",
+              "on-background": "#191c1d",
+              "on-primary-container": "#78869a",
+              "on-primary-fixed-variant": "#3a485a",
+              "surface-tint": "#516072",
+              "primary-container": "#0f1e2e",
+              "outline-variant": "#c4c6cc",
+              "on-primary": "#ffffff",
+              "inverse-primary": "#b9c8dd",
+              "surface-container-lowest": "#ffffff",
+              "tertiary-container": "#091e31",
+              "secondary-fixed": "#f9e194",
+              "on-tertiary-fixed": "#071d30",
+              "surface-bright": "#f8f9fa",
+              "secondary-fixed-dim": "#dcc57a",
+              "surface-variant": "#e1e3e4",
+              "on-tertiary-container": "#73879e",
+              "primary-fixed-dim": "#b9c8dd",
+              "on-secondary-fixed": "#231b00",
+              "error-container": "#ffdad6",
+              "secondary-container": "#f6df91",
+              "on-secondary": "#ffffff",
+              "on-secondary-fixed-variant": "#554505",
+              "surface-dim": "#d9dadb",
+              "secondary": "#6e5d1d",
+              "surface-container": "#edeeef",
+              "error": "#ba1a1a"
+            },
+            fontFamily: {
+              "headline": ["Manrope", "sans-serif"],
+              "body": ["Inter", "sans-serif"],
+              "label": ["Inter", "sans-serif"],
+              "script": ["Pinyon Script", "cursive"]
+            },
+            borderRadius: {
+              "DEFAULT": "0.125rem",
+              "lg": "0.25rem",
+              "xl": "0.5rem",
+              "full": "0.75rem",
+              "editorial": "1.5rem",
+              "editorial-lg": "2rem"
+            },
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+      }
+      .glass-card {
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(196, 198, 204, 0.15);
+      }
+      .editorial-shadow {
+        box-shadow: 0 40px 100px -20px rgba(0, 3, 9, 0.15);
+      }
+      .text-glow {
+        text-shadow: 0 0 20px rgba(249, 225, 148, 0.3);
+      }
+    </style>
+</head>
+<body class="bg-background font-body text-on-background antialiased selection:bg-secondary-fixed selection:text-on-secondary-fixed">
+<!-- TopNavBar Navigation Shell -->
+<nav class="fixed top-0 w-full z-50 bg-slate-900/60 dark:bg-slate-950/60 backdrop-blur-xl border-b border-white/10 dark:border-white/5 shadow-2xl shadow-slate-950/20">
+<div class="flex justify-between items-center h-20 px-8 max-w-7xl mx-auto">
+<div class="text-2xl font-bold tracking-tighter text-slate-50 dark:text-slate-50 font-headline">AskJuthis</div>
+<div class="hidden md:flex items-center space-x-10 font-manrope font-medium tracking-tight text-sm">
+<a class="text-slate-300 hover:text-white transition-colors" href="#">Solutions</a>
+<a class="text-slate-300 hover:text-white transition-colors" href="#">How it Works</a>
+<a class="text-slate-300 hover:text-white transition-colors" href="#">Rates</a>
+<a class="text-slate-300 hover:text-white transition-colors" href="#">Security</a>
+</div>
+<div class="flex items-center gap-6">
+<button class="text-slate-300 text-sm font-medium hover:text-white transition-colors">Log In</button>
+<button class="bg-secondary-fixed text-on-secondary-fixed px-6 py-2.5 rounded-lg text-sm font-bold tracking-tight hover:bg-secondary-fixed-dim active:scale-95 transition-all duration-300">
+                    Get Started
+                </button>
+</div>
+</div>
+</nav>
+<!-- Hero Section -->
+<header class="relative min-h-screen flex items-center pt-20 overflow-hidden bg-primary-container">
+<!-- Architectural Dusk Background Overlay -->
+<div class="absolute inset-0 z-0">
+<div class="absolute inset-0 bg-gradient-to-r from-primary-container via-primary-container/80 to-transparent z-10"></div>
+<img alt="Architectural background" class="w-full h-full object-cover object-center opacity-40 scale-105" data-alt="luxury glass and steel skyscraper at dusk with soft golden interior lights reflecting on blue architectural surfaces" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB_xe8vKRmZyNU8MTe2M4bAMqX5fALD2Mm_fVHUxnC2C3jING0rW9fwNaJ9bgW62lluRI5CMHxsgU-CiCaL2Kz2QbANm3CSH-yTei9AYOaYlUvMa4c-9W_VEHh7ld64o-0wfKKng29CNrJQX5d8aKn35wgrQvS5TLGvCoxlgM3ewc0JCJoUOB78ISUswhliS50oEmQk2f50mTJMU4HGX4Rt_vc9aBALXjDZf2QI4qcZCZV0gujeDeu5_jc7T41P7EEgDTErgdnAI3fP"/>
+</div>
+<div class="relative z-20 max-w-7xl mx-auto px-8 w-full grid md:grid-cols-12 gap-12">
+<div class="md:col-span-8 lg:col-span-7">
+<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-secondary-fixed/30 bg-secondary-fixed/5 text-secondary-fixed text-xs font-bold uppercase tracking-[0.2em] mb-8">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary-fixed"></span>
+                    Mortgage Refined
+                </div>
+<h1 class="font-headline font-extrabold text-5xl md:text-7xl lg:text-8xl text-white leading-[1.1] tracking-tight mb-8">
+                    The <span class="font-script text-secondary-fixed text-6xl md:text-8xl lg:text-9xl normal-case font-normal -rotate-2 inline-block px-2 text-glow">modern</span> Way to Mortgage
+                </h1>
+<p class="text-lg md:text-xl text-on-primary-container max-w-xl mb-12 font-light leading-relaxed">
+                    Experience a sanctuary of financial clarity. AskJuthis combines military-grade security with an editorial approach to home financing, ensuring every step is as sophisticated as the home you're building.
+                </p>
+<div class="flex flex-col sm:flex-row gap-5">
+<button class="px-8 py-4 bg-secondary-fixed text-on-secondary-fixed rounded-lg font-bold tracking-tight text-lg shadow-xl shadow-secondary-fixed/10 hover:bg-secondary-fixed-dim hover:-translate-y-0.5 transition-all duration-300 active:scale-95">
+                        Get Started
+                    </button>
+<button class="px-8 py-4 glass-card text-secondary-fixed rounded-lg font-bold tracking-tight text-lg border border-secondary-fixed/20 hover:bg-white/10 transition-all duration-300">
+                        How it Works
+                    </button>
+</div>
+</div>
+</div>
+<!-- Asymmetric Floating Card Decoration -->
+<div class="absolute right-0 bottom-24 hidden lg:block w-1/3 z-20">
+<div class="glass-card rounded-l-editorial-lg p-10 editorial-shadow border-r-0">
+<div class="flex items-center gap-4 mb-6">
+<div class="w-12 h-12 rounded-full bg-secondary-fixed/10 flex items-center justify-center text-secondary-fixed">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">verified_user</span>
+</div>
+<div>
+<div class="text-white font-headline font-bold">Institutional Security</div>
+<div class="text-on-primary-container text-xs">SOC2 Type II Compliant</div>
+</div>
+</div>
+<div class="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+<div class="h-full w-2/3 bg-secondary-fixed rounded-full"></div>
+</div>
+<div class="mt-4 flex justify-between text-xs font-medium uppercase tracking-wider text-slate-400">
+<span>Processing Equity</span>
+<span class="text-secondary-fixed">67% Complete</span>
+</div>
+</div>
+</div>
+</header>
+<!-- Trust Bar Section -->
+<section class="py-16 bg-surface-container-low overflow-hidden">
+<div class="max-w-7xl mx-auto px-8">
+<div class="text-center mb-10">
+<span class="text-[0.65rem] font-bold uppercase tracking-[0.3em] text-outline">Powered by Institutional-Grade Infrastructure</span>
+</div>
+<div class="flex flex-wrap justify-center items-center gap-x-16 gap-y-12 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
+<span class="font-headline font-extrabold text-2xl tracking-tighter text-on-surface">Plaid</span>
+<span class="font-headline font-extrabold text-2xl tracking-tighter text-on-surface">AWS</span>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-on-surface">shield</span>
+<span class="font-headline font-bold text-lg text-on-surface">SOC2 Certified</span>
+</div>
+<span class="font-headline font-extrabold text-2xl tracking-tighter text-on-surface">TransUnion</span>
+</div>
+</div>
+</section>
+<!-- Feature Grid Section -->
+<section class="py-32 bg-white relative">
+<div class="max-w-7xl mx-auto px-8">
+<div class="grid md:grid-cols-3 gap-10">
+<!-- Card 1 -->
+<div class="bg-surface-container-lowest p-10 rounded-editorial-lg rounded-tr-none border-b-4 border-secondary-fixed/20 editorial-shadow hover:-translate-y-2 transition-transform duration-500 group">
+<div class="mb-8">
+<span class="material-symbols-outlined text-4xl text-secondary" data-icon="description">description</span>
+</div>
+<h3 class="font-headline font-bold text-2xl text-primary mb-4 leading-tight">Seamless Document Management</h3>
+<p class="text-on-surface-variant leading-relaxed font-light">
+                        Automatic verification and secure vaulting for your most sensitive financial records. No paper, no friction.
+                    </p>
+<div class="mt-8 pt-8 border-t border-outline-variant/10 opacity-0 group-hover:opacity-100 transition-opacity">
+<a class="text-secondary font-bold text-sm uppercase tracking-widest flex items-center gap-2" href="#">
+                            Learn More <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</a>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-primary-container p-10 rounded-editorial-lg rounded-tr-none border-b-4 border-secondary-fixed editorial-shadow hover:-translate-y-2 transition-transform duration-500 group">
+<div class="mb-8">
+<span class="material-symbols-outlined text-4xl text-secondary-fixed" data-icon="analytics">analytics</span>
+</div>
+<h3 class="font-headline font-bold text-2xl text-white mb-4 leading-tight">Real-Time Journey Tracking</h3>
+<p class="text-on-primary-container leading-relaxed font-light">
+                        Visualize every milestone of your mortgage journey with precision tracking and instant status notifications.
+                    </p>
+<div class="mt-8 pt-8 border-t border-white/5 opacity-0 group-hover:opacity-100 transition-opacity">
+<a class="text-secondary-fixed font-bold text-sm uppercase tracking-widest flex items-center gap-2" href="#">
+                            Explore Tracking <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</a>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="bg-surface-container-lowest p-10 rounded-editorial-lg rounded-tr-none border-b-4 border-secondary-fixed/20 editorial-shadow hover:-translate-y-2 transition-transform duration-500 group">
+<div class="mb-8">
+<span class="material-symbols-outlined text-4xl text-secondary" data-icon="handshake">handshake</span>
+</div>
+<h3 class="font-headline font-bold text-2xl text-primary mb-4 leading-tight">Expert Collaboration</h3>
+<p class="text-on-surface-variant leading-relaxed font-light">
+                        A direct line to elite specialists. Bridge the gap between digital speed and human strategic guidance.
+                    </p>
+<div class="mt-8 pt-8 border-t border-outline-variant/10 opacity-0 group-hover:opacity-100 transition-opacity">
+<a class="text-secondary font-bold text-sm uppercase tracking-widest flex items-center gap-2" href="#">
+                            Meet Advisors <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</a>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- The Atelier Experience Marketing Section -->
+<section class="relative bg-surface py-32 overflow-hidden">
+<div class="max-w-7xl mx-auto px-8 grid lg:grid-cols-2 gap-20 items-center">
+<div class="relative order-2 lg:order-1">
+<div class="relative z-10 rounded-editorial-lg overflow-hidden editorial-shadow">
+<img alt="Luxury Interior" class="w-full h-[600px] object-cover" data-alt="ultra modern minimalist interior with floor to ceiling windows showing a garden and high end designer furniture in warm sunlight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCpRWZ2TICzhI2WrbSeQbORiApcYbxlH8ApluvGEq-lARlULhqfhiGGCkLONZIRLm8qgRmOZbWoqqzSaA394Xf8OP76z_0eWrCiJNYWJOQur_UFJeQOtLRN06bpcw79Tr2cIBOns5nCa0n4AsxQLcOWPBkm1lecdybzsvdax_WbO4hrGwAq3aSWVMDQAMjGQPUziU5UN17uvlvXQj14pjxuewgiVspmlxOddSbOt50czG8f4NklP2-Hes9nqU0JHT-udHmU_8WdNHfs"/>
+</div>
+<!-- Floating Detail Card -->
+<div class="absolute -bottom-10 -right-10 z-20 glass-card p-8 rounded-editorial w-72 editorial-shadow hidden md:block">
+<div class="text-primary font-headline font-bold text-xl mb-2">Legacy Focused</div>
+<p class="text-on-surface-variant text-sm font-light">Building more than just a home, we're building your generational wealth through strategic equity planning.</p>
+</div>
+</div>
+<div class="order-1 lg:order-2">
+<span class="text-secondary font-bold uppercase tracking-[0.4em] text-xs block mb-6">The Atelier Experience</span>
+<h2 class="font-headline font-extrabold text-4xl md:text-5xl text-primary mb-10 leading-tight">Mortgage strategy, <br/><span class="text-secondary font-script text-6xl normal-case font-normal inline-block mt-2">tailored like fine art.</span></h2>
+<div class="space-y-12">
+<div class="flex gap-6">
+<div class="shrink-0 w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container">
+<span class="material-symbols-outlined text-2xl">architecture</span>
+</div>
+<div>
+<h4 class="font-headline font-bold text-xl text-primary mb-2">Strategic Tailoring</h4>
+<p class="text-on-surface-variant leading-relaxed">Every mortgage is unique. Our platform adapts to your long-term financial goals, providing custom paths for every investor and homeowner.</p>
+</div>
+</div>
+<div class="flex gap-6">
+<div class="shrink-0 w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container">
+<span class="material-symbols-outlined text-2xl">biotech</span>
+</div>
+<div>
+<h4 class="font-headline font-bold text-xl text-primary mb-2">Precision Tech</h4>
+<p class="text-on-surface-variant leading-relaxed">Our proprietary algorithms analyze thousands of data points to secure the most favorable rates in the contemporary market.</p>
+</div>
+</div>
+<div class="flex gap-6">
+<div class="shrink-0 w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container">
+<span class="material-symbols-outlined text-2xl">verified</span>
+</div>
+<div>
+<h4 class="font-headline font-bold text-xl text-primary mb-2">Authority &amp; Trust</h4>
+<p class="text-on-surface-variant leading-relaxed">Built on a foundation of regulatory excellence and consumer protection, AskJuthis is your guardian in the lending space.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Final CTA Section -->
+<section class="pb-32 px-8">
+<div class="max-w-7xl mx-auto">
+<div class="relative bg-secondary-fixed rounded-editorial-lg p-12 md:p-24 overflow-hidden text-center editorial-shadow">
+<!-- Background Texture -->
+<div class="absolute inset-0 opacity-10 pointer-events-none mix-blend-overlay">
+<div class="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary via-transparent to-transparent"></div>
+</div>
+<div class="relative z-10 max-w-2xl mx-auto">
+<h2 class="font-headline font-extrabold text-4xl md:text-5xl text-on-secondary-fixed mb-8 leading-tight">Ready to begin your modern mortgage journey?</h2>
+<p class="text-on-secondary-fixed-variant text-lg mb-12 font-medium">Join thousands of borrowers who have discovered the editorial way to home ownership. Simple. Secure. Sophisticated.</p>
+<div class="flex flex-col sm:flex-row justify-center gap-6">
+<button class="bg-primary text-white px-10 py-5 rounded-lg font-bold text-lg hover:bg-primary-container transition-all shadow-lg active:scale-95">
+                            Start Your Free Application
+                        </button>
+<button class="bg-transparent border-2 border-on-secondary-fixed text-on-secondary-fixed px-10 py-5 rounded-lg font-bold text-lg hover:bg-on-secondary-fixed hover:text-secondary-fixed transition-all active:scale-95">
+                            Contact a Specialist
+                        </button>
+</div>
+<p class="mt-8 text-on-secondary-fixed-variant text-xs font-bold uppercase tracking-[0.2em]">No hard credit check required to start</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Footer Shell -->
+<footer class="w-full pt-20 pb-10 bg-slate-900 dark:bg-slate-950 tonal-shift border-t border-white/5">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-12 px-8 max-w-7xl mx-auto">
+<div class="md:col-span-1">
+<span class="text-xl font-bold text-slate-100 mb-4 block font-headline">AskJuthis</span>
+<p class="font-inter text-sm leading-relaxed text-slate-400">
+                    The intersection of financial architectural precision and high-end mortgage services.
+                </p>
+</div>
+<div>
+<h4 class="text-amber-200 font-semibold mb-6 font-headline">Solutions</h4>
+<ul class="space-y-4">
+<li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Purchase</a></li>
+<li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Refinance</a></li>
+<li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Equity Access</a></li>
+<li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Rates &amp; Planning</a></li>
+</ul>
+</div>
+<div>
+<h4 class="text-amber-200 font-semibold mb-6 font-headline">Company</h4>
+<ul class="space-y-4">
+<li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">How it Works</a></li>
+<li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Security</a></li>
+<li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Privacy Policy</a></li>
+<li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Terms of Service</a></li>
+</ul>
+</div>
+<div>
+<h4 class="text-amber-200 font-semibold mb-6 font-headline">Compliance</h4>
+<ul class="space-y-4">
+<li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Compliance Docs</a></li>
+<li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">ADA Accessibility</a></li>
+<li class="flex items-center gap-2 text-slate-400 text-xs mt-6">
+<span class="material-symbols-outlined text-sm">home</span>
+                        Equal Housing Lender
+                    </li>
+</ul>
+</div>
+</div>
+<div class="max-w-7xl mx-auto px-8 mt-20 pt-10 border-t border-white/5 text-center">
+<p class="font-inter text-xs leading-relaxed text-slate-500">
+                © 2024 AskJuthis Mortgage Solutions. All Rights Reserved. NMLS Consumer Access #123456.
+            </p>
+</div>
+</footer>
+</body></html>

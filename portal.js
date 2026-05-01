@@ -82,31 +82,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         await window.checkUserStatus();
         window.showPortalDashboard();
     } else {
-        appContent.innerHTML = renderLogin();
-        initScrollReveal();
+        window.showLandingPage();
     }
-
-    // Show sign-out button
-    const signOutBtn = document.getElementById('portal-sign-out-btn');
-    if (token && signOutBtn) signOutBtn.classList.remove('hidden');
 });
 
 // Portal Dashboard Loader
 window.showPortalDashboard = function() {
+    const navContainer = document.getElementById('nav-container');
+    if (navContainer) navContainer.innerHTML = renderPortalNav();
+
     const appContent = document.getElementById('app-content');
     if (window.userStatus && window.userStatus.role === 'admin') {
         appContent.innerHTML = renderAdminDashboard();
         window.loadAdminData();
+    } else if (window.userStatus && window.userStatus.role === 'agent') {
+        appContent.innerHTML = renderAgentDashboard();
+        // future: window.loadAgentData();
     } else {
         appContent.innerHTML = renderPortal();
         window.loadDocuments();
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
     initScrollReveal();
-
-    // Show sign-out button
-    const signOutBtn = document.getElementById('portal-sign-out-btn');
-    if (signOutBtn) signOutBtn.classList.remove('hidden');
+    window.initWaveAnimation('portal-wave-svg');
 }
 
 // Sign Out
@@ -125,9 +123,7 @@ window.togglePortal = async function(showPortal) {
             await window.checkUserStatus();
             window.showPortalDashboard();
         } else {
-            const appContent = document.getElementById('app-content');
-            appContent.innerHTML = renderLogin();
-            initScrollReveal();
+            window.showLandingPage();
         }
     } else {
         window.portalSignOut();
@@ -198,6 +194,7 @@ window.submitLogin = async function() {
             window.mfaContext = { email: data.email, type: data.mfaType };
             const appContent = document.getElementById('app-content');
             appContent.innerHTML = renderMFAChallenge(data.mfaType);
+            window.initWaveAnimation('portal-wave-svg');
             return;
         }
 
@@ -205,6 +202,7 @@ window.submitLogin = async function() {
             window.mfaContext = { email: data.email };
             const appContent = document.getElementById('app-content');
             appContent.innerHTML = renderRegistrationVerification(data.email);
+            window.initWaveAnimation('portal-wave-svg');
             return;
         }
 
@@ -215,16 +213,7 @@ window.submitLogin = async function() {
             await window.checkUserStatus();
 
             // Go to portal
-            const appContent = document.getElementById('app-content');
-            if (window.userStatus && window.userStatus.role === 'admin') {
-                appContent.innerHTML = renderAdminDashboard();
-                window.loadAdminData();
-            } else {
-                appContent.innerHTML = renderPortal();
-                window.loadDocuments();
-            }
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            initScrollReveal();
+            window.showPortalDashboard();
         } else {
             if (errorEl) errorEl.textContent = data.error || 'Login failed.';
             if (btn) btn.innerHTML = 'Log In & Authenticate';
@@ -268,6 +257,7 @@ window.submitRegister = async function() {
                 window.mfaContext = { email: data.email };
                 const appContent = document.getElementById('app-content');
                 appContent.innerHTML = renderRegistrationVerification(data.email);
+                window.initWaveAnimation('portal-wave-svg');
                 return;
             }
             localStorage.setItem('jwt_token', data.token);
@@ -296,25 +286,357 @@ window.submitRegister = async function() {
     }
 }
 
+window.renderLandingNav = function() {
+    return `
+    <nav class="fixed top-0 w-full z-50 bg-slate-900/60 dark:bg-slate-950/60 backdrop-blur-xl border-b border-white/10 dark:border-white/5 shadow-2xl shadow-slate-950/20">
+        <div class="flex justify-between items-center h-20 px-8 max-w-7xl mx-auto">
+            <div class="text-2xl font-bold tracking-tighter text-slate-50 dark:text-slate-50 font-headline flex items-center">Majestic<span class="font-script text-secondary-fixed text-glow normal-case font-normal ml-2 text-[2.75rem] leading-none translate-y-1.5">Equity</span></div>
+            <div class="hidden md:flex items-center space-x-10 font-manrope font-medium tracking-tight text-sm">
+                <a class="text-slate-300 hover:text-white transition-colors" href="#">Solutions</a>
+                <a class="text-slate-300 hover:text-white transition-colors" href="#">How it Works</a>
+                <a class="text-slate-300 hover:text-white transition-colors" href="#">Rates</a>
+                <a class="text-slate-300 hover:text-white transition-colors" href="#">Security</a>
+            </div>
+            <div class="flex items-center gap-6">
+                <button onclick="window.showLogin()" class="text-slate-300 text-sm font-medium hover:text-white transition-colors">Log In</button>
+                <button onclick="window.showRegister()" class="bg-secondary-fixed text-on-secondary-fixed px-6 py-2.5 rounded-lg text-sm font-bold tracking-tight hover:bg-secondary-fixed-dim transition-all duration-300 active:scale-95">
+                    Get Started
+                </button>
+            </div>
+        </div>
+    </nav>
+    `;
+};
+
+window.renderAuthNav = function() {
+    return `
+    <nav class="sticky top-0 z-50 bg-primary/95 border-b border-white/10">
+        <div class="px-4 sm:px-8 lg:px-12">
+            <div class="flex h-20 items-center justify-between">
+                <div class="flex items-center">
+                    <a href="javascript:void(0)" onclick="window.showLandingPage()" class="text-2xl font-bold tracking-tight text-white uppercase flex items-center">Majestic<span class="text-secondary-fixed font-script normal-case font-normal ml-2 text-[2.75rem] leading-none translate-y-1.5">Equity</span></a>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button class="text-sm font-medium hover:text-secondary-fixed transition-colors text-white/60 px-3 py-2" onclick="window.showLandingPage()">← Back to Home</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    `;
+};
+
+window.renderPortalNav = function() {
+    const isAgent = window.userStatus && window.userStatus.role === 'agent';
+    const isAdmin = window.userStatus && window.userStatus.role === 'admin';
+    
+    return `
+    <nav class="sticky top-0 z-50 bg-primary/95 border-b border-white/10">
+        <div class="px-4 sm:px-8 lg:px-12">
+            <div class="flex h-20 items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <a href="javascript:void(0)" class="text-2xl font-bold tracking-tight text-white uppercase flex items-center">Majestic<span class="text-secondary-fixed font-script normal-case font-normal ml-2 text-[2.75rem] leading-none translate-y-1.5">Equity</span></a>
+                    ${isAgent ? '<span class="hidden md:block px-3 py-1 bg-secondary-fixed/10 border border-secondary-fixed/20 text-secondary-fixed text-[10px] font-black uppercase tracking-widest rounded-full ml-4">Expert Portal</span>' : ''}
+                    ${isAdmin ? '<span class="hidden md:block px-3 py-1 bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-black uppercase tracking-widest rounded-full ml-4">Admin Control</span>' : ''}
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button id="portal-sign-out-btn" class="px-6 py-2 rounded-full border border-white/20 text-white/60 hover:text-white hover:border-white/40 transition-all font-bold text-sm" onclick="window.portalSignOut()">Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    `;
+};
+
+window.renderLandingPage = function() {
+    return `
+        <!-- Hero Section -->
+        <header class="relative min-h-screen flex items-center pt-20 overflow-hidden bg-primary-container">
+            <!-- Animated Wave Mesh Background -->
+            <div class="absolute inset-0 z-0" style="background: radial-gradient(ellipse 120% 80% at 70% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
+                <!-- JS-animated wave canvas -->
+                <svg id="hero-wave-svg" viewBox="0 0 1200 800" preserveAspectRatio="none" class="absolute inset-0 w-full h-full" style="opacity: 0.22;"></svg>
+                <!-- Radial glow accent in top-right -->
+                <div class="absolute top-0 right-0 w-[70%] h-[70%]" style="background: radial-gradient(ellipse at 80% 30%, rgba(211,189,115,0.06) 0%, transparent 60%);"></div>
+            </div>
+            
+            <div class="relative z-20 max-w-7xl mx-auto px-8 w-full grid md:grid-cols-12 gap-12">
+                <div class="md:col-span-8 lg:col-span-7">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-secondary-fixed/30 bg-secondary-fixed/5 text-secondary-fixed text-xs font-bold uppercase tracking-[0.2em] mb-8">
+                        <span class="w-1.5 h-1.5 rounded-full bg-secondary-fixed"></span> Mortgage Refined
+                    </div>
+                    
+                    <h1 class="font-headline font-extrabold text-5xl md:text-7xl lg:text-8xl text-white leading-[1.1] tracking-tight mb-8">
+                        The <span class="font-script text-secondary-fixed text-6xl md:text-8xl lg:text-9xl normal-case font-normal -rotate-2 inline-block px-2 text-glow">modern</span> Way to Mortgage
+                    </h1>
+                    
+                    <p class="text-lg md:text-xl text-on-primary-container max-w-xl mb-12 font-light leading-relaxed">
+                        Experience a sanctuary of financial clarity. MajesticEquity combines military-grade security with an editorial approach to home financing, ensuring every step is as sophisticated as the home you're building.
+                    </p>
+                    
+                    <div class="flex flex-col sm:flex-row gap-5">
+                        <button onclick="window.showRegister()" class="px-8 py-4 bg-secondary-fixed text-on-secondary-fixed rounded-lg font-bold tracking-tight text-lg shadow-xl shadow-secondary-fixed/10 hover:bg-secondary-fixed-dim hover:-translate-y-0.5 transition-all duration-300 active:scale-95">Get Started</button>
+                        <button class="px-8 py-4 glass-card text-secondary-fixed rounded-lg font-bold tracking-tight text-lg border border-secondary-fixed/20 hover:bg-white/10 transition-all duration-300">How it Works</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Asymmetric Floating Card Decoration -->
+            <div class="absolute right-0 bottom-24 hidden lg:block w-1/3 z-20">
+                <div class="glass-card rounded-l-editorial-lg p-10 editorial-shadow border-r-0">
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="w-12 h-12 rounded-full bg-secondary-fixed/10 flex items-center justify-center text-secondary-fixed">
+                            <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">verified_user</span>
+                        </div>
+                        <div>
+                            <div class="text-white font-headline font-bold">Institutional Security</div>
+                            <div class="text-on-primary-container text-xs">SOC2 Type II Compliant</div>
+                        </div>
+                    </div>
+                    <div class="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+                        <div class="h-full w-2/3 bg-secondary-fixed rounded-full"></div>
+                    </div>
+                    <div class="mt-4 flex justify-between text-xs font-medium uppercase tracking-wider text-slate-400">
+                        <span>Processing Equity</span>
+                        <span class="text-secondary-fixed">67% Complete</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Trust Bar Section -->
+        <section class="py-16 bg-surface-container-low overflow-hidden">
+            <div class="max-w-7xl mx-auto px-8">
+                <div class="text-center mb-10"><span class="text-[0.65rem] font-bold uppercase tracking-[0.3em] text-outline">Powered by Institutional-Grade Infrastructure</span></div>
+                <div class="flex flex-wrap justify-center items-center gap-x-16 gap-y-12 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
+                    <span class="font-headline font-extrabold text-2xl tracking-tighter text-on-surface">Plaid</span>
+                    <span class="font-headline font-extrabold text-2xl tracking-tighter text-on-surface">AWS</span>
+                    <div class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface">shield</span><span class="font-headline font-bold text-lg text-on-surface">SOC2 Certified</span></div>
+                    <span class="font-headline font-extrabold text-2xl tracking-tighter text-on-surface">TransUnion</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Feature Grid Section -->
+        <section class="py-32 bg-white relative">
+            <div class="max-w-7xl mx-auto px-8">
+                <div class="grid md:grid-cols-3 gap-10">
+                    <!-- Card 1 -->
+                    <div class="bg-surface-container-lowest p-10 rounded-editorial-lg rounded-tr-none border-b-4 border-secondary-fixed/20 editorial-shadow hover:-translate-y-2 transition-transform duration-500 group">
+                        <div class="mb-8"><span class="material-symbols-outlined text-4xl text-secondary" data-icon="description">description</span></div>
+                        <h3 class="font-headline font-bold text-2xl text-primary mb-4 leading-tight">Seamless Document Management</h3>
+                        <p class="text-on-surface-variant leading-relaxed font-light">Automatic verification and secure vaulting for your most sensitive financial records. No paper, no friction.</p>
+                        <div class="mt-8 pt-8 border-t border-outline-variant/10 opacity-0 group-hover:opacity-100 transition-opacity"><a class="text-secondary font-bold text-sm uppercase tracking-widest flex items-center gap-2" href="#">Learn More <span class="material-symbols-outlined text-sm">arrow_forward</span></a></div>
+                    </div>
+                    <!-- Card 2 -->
+                    <div class="bg-primary-container p-10 rounded-editorial-lg rounded-tr-none border-b-4 border-secondary-fixed editorial-shadow hover:-translate-y-2 transition-transform duration-500 group">
+                        <div class="mb-8"><span class="material-symbols-outlined text-4xl text-secondary-fixed" data-icon="analytics">analytics</span></div>
+                        <h3 class="font-headline font-bold text-2xl text-white mb-4 leading-tight">Real-Time Journey Tracking</h3>
+                        <p class="text-on-primary-container leading-relaxed font-light">Visualize every milestone of your mortgage journey with precision tracking and instant status notifications.</p>
+                        <div class="mt-8 pt-8 border-t border-white/5 opacity-0 group-hover:opacity-100 transition-opacity"><a class="text-secondary-fixed font-bold text-sm uppercase tracking-widest flex items-center gap-2" href="#">Explore Tracking <span class="material-symbols-outlined text-sm">arrow_forward</span></a></div>
+                    </div>
+                    <!-- Card 3 -->
+                    <div class="bg-surface-container-lowest p-10 rounded-editorial-lg rounded-tr-none border-b-4 border-secondary-fixed/20 editorial-shadow hover:-translate-y-2 transition-transform duration-500 group">
+                        <div class="mb-8"><span class="material-symbols-outlined text-4xl text-secondary" data-icon="handshake">handshake</span></div>
+                        <h3 class="font-headline font-bold text-2xl text-primary mb-4 leading-tight">Expert Collaboration</h3>
+                        <p class="text-on-surface-variant leading-relaxed font-light">A direct line to elite specialists. Bridge the gap between digital speed and human strategic guidance.</p>
+                        <div class="mt-8 pt-8 border-t border-outline-variant/10 opacity-0 group-hover:opacity-100 transition-opacity"><a class="text-secondary font-bold text-sm uppercase tracking-widest flex items-center gap-2" href="#">Meet Advisors <span class="material-symbols-outlined text-sm">arrow_forward</span></a></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- The Atelier Experience Marketing Section -->
+        <section class="relative bg-surface py-32 overflow-hidden">
+            <div class="max-w-7xl mx-auto px-8 grid lg:grid-cols-2 gap-20 items-center">
+                <div class="relative order-2 lg:order-1">
+                    <div class="relative z-10 rounded-editorial-lg overflow-hidden editorial-shadow">
+                        <img alt="Luxury Interior" class="w-full h-[600px] object-cover" data-alt="ultra modern minimalist interior with floor to ceiling windows showing a garden and high end designer furniture in warm sunlight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCpRWZ2TICzhI2WrbSeQbORiApcYbxlH8ApluvGEq-lARlULhqfhiGGCkLONZIRLm8qgRmOZbWoqqzSaA394Xf8OP76z_0eWrCiJNYWJOQur_UFJeQOtLRN06bpcw79Tr2cIBOns5nCa0n4AsxQLcOWPBkm1lecdybzsvdax_WbO4hrGwAq3aSWVMDQAMjGQPUziU5UN17uvlvXQj14pjxuewgiVspmlxOddSbOt50czG8f4NklP2-Hes9nqU0JHT-udHmU_8WdNHfs"/>
+                    </div>
+                    <div class="absolute -bottom-10 -right-10 z-20 glass-card p-8 rounded-editorial w-72 editorial-shadow hidden md:block">
+                        <div class="text-primary font-headline font-bold text-xl mb-2">Legacy Focused</div>
+                        <p class="text-on-surface-variant text-sm font-light">Building more than just a home, we're building your generational wealth through strategic equity planning.</p>
+                    </div>
+                </div>
+                <div class="order-1 lg:order-2">
+                    <span class="text-secondary font-bold uppercase tracking-[0.4em] text-xs block mb-6">The Atelier Experience</span>
+                    <h2 class="font-headline font-extrabold text-4xl md:text-5xl text-primary mb-10 leading-tight">Mortgage strategy, <br/><span class="text-secondary font-script text-6xl normal-case font-normal inline-block mt-2">tailored like fine art.</span></h2>
+                    <div class="space-y-12">
+                        <div class="flex gap-6">
+                            <div class="shrink-0 w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container"><span class="material-symbols-outlined text-2xl">architecture</span></div>
+                            <div>
+                                <h4 class="font-headline font-bold text-xl text-primary mb-2">Strategic Tailoring</h4>
+                                <p class="text-on-surface-variant leading-relaxed">Every mortgage is unique. Our platform adapts to your long-term financial goals, providing custom paths for every investor and homeowner.</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-6">
+                            <div class="shrink-0 w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container"><span class="material-symbols-outlined text-2xl">biotech</span></div>
+                            <div>
+                                <h4 class="font-headline font-bold text-xl text-primary mb-2">Precision Tech</h4>
+                                <p class="text-on-surface-variant leading-relaxed">Our proprietary algorithms analyze thousands of data points to secure the most favorable rates in the contemporary market.</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-6">
+                            <div class="shrink-0 w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container"><span class="material-symbols-outlined text-2xl">verified</span></div>
+                            <div>
+                                <h4 class="font-headline font-bold text-xl text-primary mb-2">Authority &amp; Trust</h4>
+                                <p class="text-on-surface-variant leading-relaxed">Built on a foundation of regulatory excellence and consumer protection, MajesticEquity is your guardian in the lending space.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Final CTA Section -->
+        <section class="pb-32 px-8 bg-surface">
+            <div class="max-w-7xl mx-auto">
+                <div class="relative bg-secondary-fixed rounded-editorial-lg p-12 md:p-24 overflow-hidden text-center editorial-shadow">
+                    <div class="absolute inset-0 opacity-10 pointer-events-none mix-blend-overlay">
+                        <div class="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary via-transparent to-transparent"></div>
+                    </div>
+                    <div class="relative z-10 max-w-2xl mx-auto">
+                        <h2 class="font-headline font-extrabold text-4xl md:text-5xl text-on-secondary-fixed mb-8 leading-tight">Ready to begin your modern mortgage journey?</h2>
+                        <p class="text-on-secondary-fixed-variant text-lg mb-12 font-medium">Join thousands of borrowers who have discovered the editorial way to home ownership. Simple. Secure. Sophisticated.</p>
+                        <div class="flex flex-col sm:flex-row justify-center gap-6">
+                            <button onclick="window.showRegister()" class="bg-primary text-white px-10 py-5 rounded-lg font-bold text-lg hover:bg-primary-container transition-all shadow-lg active:scale-95">Start Your Free Application</button>
+                            <button class="bg-transparent border-2 border-on-secondary-fixed text-on-secondary-fixed px-10 py-5 rounded-lg font-bold text-lg hover:bg-on-secondary-fixed hover:text-secondary-fixed transition-all active:scale-95">Contact a Specialist</button>
+                        </div>
+                        <p class="mt-8 text-on-secondary-fixed-variant text-xs font-bold uppercase tracking-[0.2em]">No hard credit check required to start</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer Shell -->
+        <footer class="w-full pt-20 pb-10 bg-slate-900 dark:bg-slate-950 tonal-shift border-t border-white/5">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-12 px-8 max-w-7xl mx-auto">
+                <div class="md:col-span-1">
+                    <div class="text-xl font-bold text-slate-100 mb-4 block font-headline flex items-center">Majestic<span class="font-script text-secondary-fixed text-glow normal-case font-normal ml-2 text-[2.25rem] leading-none translate-y-1">Equity</span></div>
+                    <p class="font-inter text-sm leading-relaxed text-slate-400">The intersection of financial architectural precision and high-end mortgage services.</p>
+                </div>
+                <div>
+                    <h4 class="text-amber-200 font-semibold mb-6 font-headline">Solutions</h4>
+                    <ul class="space-y-4">
+                        <li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Purchase</a></li>
+                        <li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Refinance</a></li>
+                        <li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Equity Access</a></li>
+                        <li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Rates &amp; Planning</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-amber-200 font-semibold mb-6 font-headline">Company</h4>
+                    <ul class="space-y-4">
+                        <li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">How it Works</a></li>
+                        <li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Security</a></li>
+                        <li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Privacy Policy</a></li>
+                        <li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Terms of Service</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-amber-200 font-semibold mb-6 font-headline">Compliance</h4>
+                    <ul class="space-y-4">
+                        <li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">Compliance Docs</a></li>
+                        <li><a class="text-slate-400 hover:text-amber-200 transition-colors hover:translate-x-1 inline-block" href="#">ADA Accessibility</a></li>
+                        <li class="flex items-center gap-2 text-slate-400 text-xs mt-6"><span class="material-symbols-outlined text-sm">home</span> Equal Housing Lender</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="max-w-7xl mx-auto px-8 mt-20 pt-10 border-t border-white/5 text-center">
+                <p class="font-inter text-xs leading-relaxed text-slate-500">© 2024 MajesticEquity Mortgage Solutions. All Rights Reserved. NMLS Consumer Access #123456.</p>
+            </div>
+        </footer>
+    `;
+};
+
+// --- Reusable Wave Animation Engine ---
+window.initWaveAnimation = function(svgId) {
+    const svg = document.getElementById(svgId);
+    if (!svg) return;
+
+    const NS = 'http://www.w3.org/2000/svg';
+    const waves = [
+        { y: 400, amp: 40, speed: 0.0004, phase: 0,    color: 'rgba(211,189,115,0.7)',  w: 1.2 },
+        { y: 350, amp: 35, speed: 0.00035, phase: 1.2,  color: 'rgba(211,189,115,0.5)', w: 0.9 },
+        { y: 300, amp: 30, speed: 0.0003, phase: 2.4,  color: 'rgba(211,189,115,0.4)',  w: 0.7 },
+        { y: 250, amp: 25, speed: 0.00025, phase: 3.6,  color: 'rgba(211,189,115,0.35)', w: 0.5 },
+        { y: 200, amp: 20, speed: 0.0002, phase: 4.8,  color: 'rgba(211,189,115,0.25)', w: 0.5 },
+        { y: 500, amp: 35, speed: 0.00032, phase: 0.8,  color: 'rgba(211,189,115,0.3)',  w: 0.7 },
+        { y: 150, amp: 15, speed: 0.00018, phase: 5.5,  color: 'rgba(211,189,115,0.15)', w: 0.4 },
+        { y: 550, amp: 25, speed: 0.00028, phase: 2.0,  color: 'rgba(211,189,115,0.2)',  w: 0.5 },
+    ];
+
+    const paths = waves.map(w => {
+        const p = document.createElementNS(NS, 'path');
+        p.setAttribute('fill', 'none');
+        p.setAttribute('stroke', w.color);
+        p.setAttribute('stroke-width', String(w.w));
+        svg.appendChild(p);
+        return p;
+    });
+
+    function buildD(baseY, amplitude, time, speed, phase) {
+        const t = time * speed + phase;
+        const pts = 7;
+        let d = '';
+        for (let i = 0; i <= pts; i++) {
+            const x = (1200 / pts) * i;
+            const y = baseY + Math.sin(t + i * 0.9) * amplitude + Math.cos(t * 0.7 + i * 1.3) * (amplitude * 0.4);
+            if (i === 0) {
+                d += 'M' + x.toFixed(1) + ',' + y.toFixed(1);
+            } else {
+                const cpx1 = (1200 / pts) * (i - 0.6);
+                const cpy1 = baseY + Math.sin(t + (i - 0.6) * 0.9) * amplitude + Math.cos(t * 0.7 + (i - 0.6) * 1.3) * (amplitude * 0.4);
+                const cpx2 = (1200 / pts) * (i - 0.3);
+                const cpy2 = baseY + Math.sin(t + (i - 0.3) * 0.9) * amplitude + Math.cos(t * 0.7 + (i - 0.3) * 1.3) * (amplitude * 0.4);
+                d += ' C' + cpx1.toFixed(1) + ',' + cpy1.toFixed(1) + ' ' + cpx2.toFixed(1) + ',' + cpy2.toFixed(1) + ' ' + x.toFixed(1) + ',' + y.toFixed(1);
+            }
+        }
+        return d;
+    }
+
+    let animId;
+    function tick(time) {
+        if (!document.getElementById(svgId)) { cancelAnimationFrame(animId); return; }
+        waves.forEach((w, i) => {
+            paths[i].setAttribute('d', buildD(w.y, w.amp, time, w.speed, w.phase));
+        });
+        animId = requestAnimationFrame(tick);
+    }
+    animId = requestAnimationFrame(tick);
+};
+
+window.showLandingPage = function() {
+    const navContainer = document.getElementById('nav-container');
+    if (navContainer) navContainer.innerHTML = renderLandingNav();
+    const appContent = document.getElementById('app-content');
+    appContent.innerHTML = renderLandingPage();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    initScrollReveal();
+    window.initWaveAnimation('hero-wave-svg');
+}
+
 window.showRegister = function() {
+    const navContainer = document.getElementById('nav-container');
+    if (navContainer) navContainer.innerHTML = renderAuthNav();
     const appContent = document.getElementById('app-content');
     appContent.innerHTML = renderRegister();
     window.scrollTo({ top: 0, behavior: 'smooth' });
     initScrollReveal();
+    window.initWaveAnimation('auth-wave-svg');
 }
 
 window.showLogin = function() {
+    const navContainer = document.getElementById('nav-container');
+    if (navContainer) navContainer.innerHTML = renderAuthNav();
     const appContent = document.getElementById('app-content');
     appContent.innerHTML = renderLogin();
     window.scrollTo({ top: 0, behavior: 'smooth' });
     initScrollReveal();
+    window.initWaveAnimation('auth-wave-svg');
 }
 
 window.verifyMFA = function() {
-    const appContent = document.getElementById('app-content');
-    appContent.innerHTML = renderPortal();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    initScrollReveal();
+    window.showPortalDashboard();
 }
 
 window.startWizard = function(step = 1) {
@@ -322,6 +644,7 @@ window.startWizard = function(step = 1) {
     appContent.innerHTML = renderWizard(step);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     initScrollReveal();
+    window.initWaveAnimation('portal-wave-svg');
 }
 
 window.nextWizardStep = function(currentStep) {
@@ -389,10 +712,7 @@ window.submitApplication = async function() {
         });
         
         await window.checkUserStatus();
-        appContent.innerHTML = renderPortal();
-        window.loadDocuments();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        initScrollReveal();
+        window.showPortalDashboard();
     } catch (error) {
         console.error('Submission failed:', error);
     }
@@ -593,11 +913,13 @@ function renderWizard(step) {
 
     return `
         <section class="min-h-screen bg-primary pt-32 pb-24 relative overflow-hidden">
-             <!-- Background Image with Overlay -->
-            <div class="absolute inset-0 z-0 opacity-10">
-                <img src="assets/modern.webp" alt="Wizard Background" class="w-full h-full object-cover" loading="lazy">
+            <!-- Animated Wave Mesh Background -->
+            <div class="absolute inset-0 z-0" style="background: radial-gradient(ellipse 120% 80% at 70% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
+                <!-- JS-animated wave canvas -->
+                <svg id="portal-wave-svg" viewBox="0 0 1200 800" preserveAspectRatio="none" class="absolute inset-0 w-full h-full" style="opacity: 0.22;"></svg>
+                <!-- Radial glow accent in top-right -->
+                <div class="absolute top-0 right-0 w-[70%] h-[70%]" style="background: radial-gradient(ellipse at 80% 30%, rgba(211,189,115,0.06) 0%, transparent 60%);"></div>
             </div>
-            <div class="absolute inset-0 bg-primary/90 z-0"></div>
 
             <div class="max-w-4xl mx-auto px-4 relative z-10">
                 <!-- Wizard Header -->
@@ -855,12 +1177,12 @@ function renderWizard(step) {
 
 function renderLogin() {
     return `
-        <section class="min-h-screen bg-primary flex items-center justify-center pt-24 pb-12 relative overflow-hidden">
-             <!-- Background Image with Overlay -->
-            <div class="absolute inset-0 z-0 opacity-20">
-                <img src="assets/modern.webp" alt="Login Background" class="w-full h-full object-cover" loading="lazy">
+        <section class="min-h-screen flex items-center justify-center pt-24 pb-12 relative overflow-hidden" style="background: radial-gradient(ellipse 120% 80% at 50% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
+            <!-- Animated Wave Background -->
+            <div class="absolute inset-0 z-0">
+                <svg id="auth-wave-svg" viewBox="0 0 1200 800" preserveAspectRatio="none" class="absolute inset-0 w-full h-full" style="opacity: 0.25; filter: drop-shadow(0 0 8px rgba(211,189,115,0.3));"></svg>
+                <div class="absolute inset-0" style="background: radial-gradient(ellipse at 50% 50%, rgba(211,189,115,0.04) 0%, transparent 70%);"></div>
             </div>
-            <div class="absolute inset-0 bg-primary/80 z-0"></div>
 
             <div class="max-w-md w-full px-6 relative z-10 reveal reveal-up">
                 <div class="p-10 md:p-12 rounded-[3.5rem] glass-card border-white/10 shadow-2xl text-center">
@@ -868,7 +1190,7 @@ function renderLogin() {
                         <span class="material-symbols-outlined text-secondary-fixed text-4xl">lock</span>
                     </div>
                     <h2 class="text-3xl font-black text-white mb-2 uppercase tracking-tight">Secure Access</h2>
-                    <p class="text-white/40 text-sm mb-10 font-bold uppercase tracking-[0.2em]">Borrower Portal 2026</p>
+                    <p class="text-white/40 text-sm mb-10 font-bold uppercase tracking-[0.2em]">MajesticEquity Portal</p>
 
                     <div id="login-error" class="text-red-400 text-xs font-bold uppercase tracking-widest mb-4"></div>
 
@@ -888,8 +1210,10 @@ function renderLogin() {
                     
                     <div class="mt-8 flex flex-col gap-4">
                         <button onclick="window.showRegister()" class="text-secondary-fixed text-xs font-bold uppercase tracking-widest hover:underline">Create New Account</button>
-                        <button onclick="window.togglePortal(false)" class="text-white/40 text-xs font-bold hover:text-white transition-colors uppercase tracking-[0.1em]">
-                            Cancel & Return to Site
+                        <div class="h-px bg-white/5 w-full my-1"></div>
+                        <button onclick="window.showAgentSignup()" class="text-white/60 text-[10px] font-black uppercase tracking-widest hover:text-secondary-fixed transition-colors italic">Are you a Mortgage Agent? Join our Expert Network</button>
+                        <button onclick="window.showLandingPage()" class="text-white/40 text-[10px] font-bold hover:text-white transition-colors uppercase tracking-[0.1em]">
+                            Cancel & Return to Home
                         </button>
                     </div>
                 </div>
@@ -900,11 +1224,12 @@ function renderLogin() {
 
 function renderRegister() {
     return `
-        <section class="min-h-screen bg-primary flex items-center justify-center pt-24 pb-12 relative overflow-hidden">
-            <div class="absolute inset-0 z-0 opacity-20">
-                <img src="assets/modern.webp" alt="Register Background" class="w-full h-full object-cover" loading="lazy">
+        <section class="min-h-screen flex items-center justify-center pt-24 pb-12 relative overflow-hidden" style="background: radial-gradient(ellipse 120% 80% at 50% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
+            <!-- Animated Wave Background -->
+            <div class="absolute inset-0 z-0">
+                <svg id="auth-wave-svg" viewBox="0 0 1200 800" preserveAspectRatio="none" class="absolute inset-0 w-full h-full" style="opacity: 0.25; filter: drop-shadow(0 0 8px rgba(211,189,115,0.3));"></svg>
+                <div class="absolute inset-0" style="background: radial-gradient(ellipse at 50% 50%, rgba(211,189,115,0.04) 0%, transparent 70%);"></div>
             </div>
-            <div class="absolute inset-0 bg-primary/80 z-0"></div>
 
             <div class="max-w-md w-full px-6 relative z-10 reveal reveal-up">
                 <div class="p-10 md:p-12 rounded-[3.5rem] glass-card border-white/10 shadow-2xl text-center">
@@ -912,7 +1237,7 @@ function renderRegister() {
                         <span class="material-symbols-outlined text-secondary-fixed text-4xl">person_add</span>
                     </div>
                     <h2 class="text-3xl font-black text-white mb-2 uppercase tracking-tight">New Application</h2>
-                    <p class="text-white/40 text-sm mb-10 font-bold uppercase tracking-[0.2em]">Create Your Secure Profile</p>
+                    <p class="text-white/40 text-sm mb-10 font-bold uppercase tracking-[0.2em]">MajesticEquity Portal</p>
 
                     <div id="register-error" class="text-red-400 text-xs font-bold uppercase tracking-widest mb-4"></div>
 
@@ -940,8 +1265,10 @@ function renderRegister() {
                     
                     <div class="mt-8 flex flex-col gap-4">
                         <button onclick="window.showLogin()" class="text-secondary-fixed text-xs font-bold uppercase tracking-widest hover:underline">Already Have an Account? Log In</button>
-                        <button onclick="window.togglePortal(false)" class="text-white/40 text-xs font-bold hover:text-white transition-colors uppercase tracking-[0.1em]">
-                            Cancel & Return to Site
+                        <div class="h-px bg-white/5 w-full my-1"></div>
+                        <button onclick="window.showAgentSignup()" class="text-white/60 text-[10px] font-black uppercase tracking-widest hover:text-secondary-fixed transition-colors italic">Mortgage Professional? Register as an Agent</button>
+                        <button onclick="window.showLandingPage()" class="text-white/40 text-[10px] font-bold hover:text-white transition-colors uppercase tracking-[0.1em]">
+                            Cancel & Return to Home
                         </button>
                     </div>
                 </div>
@@ -950,11 +1277,138 @@ function renderRegister() {
     `;
 }
 
+window.showAgentSignup = function() {
+    const appContent = document.getElementById('app-content');
+    appContent.innerHTML = renderAgentSignup();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    initScrollReveal();
+    window.initWaveAnimation('auth-wave-svg');
+}
+
+function renderAgentSignup() {
+    return `
+        <section class="min-h-screen flex items-center justify-center pt-24 pb-12 relative overflow-hidden" style="background: radial-gradient(ellipse 120% 80% at 50% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
+            <!-- Animated Wave Background -->
+            <div class="absolute inset-0 z-0">
+                <svg id="auth-wave-svg" viewBox="0 0 1200 800" preserveAspectRatio="none" class="absolute inset-0 w-full h-full" style="opacity: 0.25; filter: drop-shadow(0 0 8px rgba(211,189,115,0.3));"></svg>
+                <div class="absolute inset-0" style="background: radial-gradient(ellipse at 50% 50%, rgba(211,189,115,0.04) 0%, transparent 70%);"></div>
+            </div>
+
+            <div class="max-w-xl w-full px-6 relative z-10 reveal reveal-up">
+                <div class="p-10 md:p-12 rounded-[3.5rem] glass-card border-white/10 shadow-2xl text-center">
+                    <div class="w-20 h-20 rounded-3xl bg-secondary-fixed/10 border border-secondary-fixed/20 flex items-center justify-center mb-8 mx-auto">
+                        <span class="material-symbols-outlined text-secondary-fixed text-4xl">domain_verification</span>
+                    </div>
+                    <h2 class="text-3xl font-black text-white mb-2 uppercase tracking-tight">Expert Network Application</h2>
+                    <p class="text-white/40 text-sm mb-10 font-bold uppercase tracking-[0.2em]">Join MajesticEquity as an Agent</p>
+
+                    <div id="agent-register-error" class="text-red-400 text-xs font-bold uppercase tracking-widest mb-4"></div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                        <div class="md:col-span-2">
+                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Professional Name</label>
+                             <input id="agent-name" type="text" placeholder="John Smith, CMC" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
+                        </div>
+                        <div>
+                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Work Email</label>
+                             <input id="agent-email" type="email" placeholder="john@brokerage.com" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
+                        </div>
+                        <div>
+                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Mobile Number</label>
+                             <input id="agent-phone" type="tel" placeholder="(555) 000-0000" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
+                        </div>
+                        <div>
+                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">NMLS ID #</label>
+                             <input id="agent-nmls" type="text" placeholder="1234567" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
+                        </div>
+                        <div>
+                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">License State</label>
+                             <select id="agent-state" class="w-full bg-primary border border-white/10 rounded-2xl py-4 px-6 text-white focus:border-secondary-fixed/50 outline-none transition-all font-medium appearance-none">
+                                <option value="" disabled selected>Select State</option>
+                                <option value="CA">California</option>
+                                <option value="FL">Florida</option>
+                                <option value="TX">Texas</option>
+                                <option value="NY">New York</option>
+                                <option value="ON">Ontario (CA)</option>
+                                <option value="BC">British Columbia (CA)</option>
+                             </select>
+                        </div>
+                        <div class="md:col-span-2">
+                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Brokerage Name</label>
+                             <input id="agent-brokerage" type="text" placeholder="Majestic Equity Partners / Independent" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
+                        </div>
+                        <div class="md:col-span-2">
+                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Create Secure Password</label>
+                             <input id="agent-password" type="password" placeholder="Min 8 characters" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
+                        </div>
+                        
+                        <button id="agent-register-btn" onclick="window.submitAgentRegister()" class="md:col-span-2 w-full py-5 rounded-3xl bg-secondary-fixed text-primary font-black uppercase tracking-widest text-sm hover:scale-[1.02] transition-all shadow-xl active:scale-95 mt-4">
+                            Submit Expert Application
+                        </button>
+                    </div>
+                    
+                    <div class="mt-8 flex flex-col gap-4 border-t border-white/5 pt-8">
+                        <button onclick="window.showLogin()" class="text-secondary-fixed text-xs font-bold uppercase tracking-widest hover:underline">Already an Expert? Log In Here</button>
+                        <button onclick="window.showLandingPage()" class="text-white/40 text-[10px] font-bold hover:text-white transition-colors uppercase tracking-[0.1em]">
+                            Cancel & Return to Home
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    `;
+}
+
+window.submitAgentRegister = async function() {
+    const name = document.getElementById('agent-name').value;
+    const email = document.getElementById('agent-email').value;
+    const phone = document.getElementById('agent-phone').value;
+    const nmlsId = document.getElementById('agent-nmls').value;
+    const brokerageName = document.getElementById('agent-brokerage').value;
+    const licenseState = document.getElementById('agent-state').value;
+    const password = document.getElementById('agent-password').value;
+    const errorEl = document.getElementById('agent-register-error');
+    const btn = document.getElementById('agent-register-btn');
+
+    if (!name || !email || !phone || !password || !nmlsId || !brokerageName || !licenseState) {
+        errorEl.textContent = 'All professional fields are strictly required.';
+        return;
+    }
+
+    btn.innerHTML = '<span class="material-symbols-outlined animate-spin mr-2">progress_activity</span> Processing Application...';
+
+    try {
+        const res = await fetch('/api/auth/register-agent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, phone, password, nmlsId, brokerageName, licenseState })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            window.mfaContext = { email: data.email };
+            document.getElementById('app-content').innerHTML = renderRegistrationVerification(data.email);
+            window.initWaveAnimation('portal-wave-svg');
+        } else {
+            errorEl.textContent = data.error || 'Registration failed.';
+            btn.textContent = 'Submit Expert Application';
+        }
+    } catch (e) {
+        errorEl.textContent = 'Professional registration service unavailable.';
+        btn.textContent = 'Submit Expert Application';
+    }
+}
+
+
 function renderMFAChallenge(type) {
     return `
         <section class="min-h-screen bg-primary flex items-center justify-center relative overflow-hidden">
-            <div class="absolute inset-0 z-0 opacity-10">
-                <img src="assets/modern.webp" alt="Background" class="w-full h-full object-cover" loading="lazy">
+            <!-- Animated Wave Mesh Background -->
+            <div class="absolute inset-0 z-0" style="background: radial-gradient(ellipse 120% 80% at 70% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
+                <!-- JS-animated wave canvas -->
+                <svg id="portal-wave-svg" viewBox="0 0 1200 800" preserveAspectRatio="none" class="absolute inset-0 w-full h-full" style="opacity: 0.22;"></svg>
+                <!-- Radial glow accent in top-right -->
+                <div class="absolute top-0 right-0 w-[70%] h-[70%]" style="background: radial-gradient(ellipse at 80% 30%, rgba(211,189,115,0.06) 0%, transparent 60%);"></div>
             </div>
             <div class="max-w-md w-full p-8 relative z-10">
                 <div class="glass-card p-10 rounded-[3.5rem] border-white/10 shadow-2xl text-center">
@@ -983,8 +1437,12 @@ function renderMFAChallenge(type) {
 function renderRegistrationVerification(email) {
     return `
         <section class="min-h-screen bg-primary flex items-center justify-center relative overflow-hidden">
-            <div class="absolute inset-0 z-0 opacity-10">
-                <img src="assets/modern.webp" alt="Background" class="w-full h-full object-cover" loading="lazy">
+            <!-- Animated Wave Mesh Background -->
+            <div class="absolute inset-0 z-0" style="background: radial-gradient(ellipse 120% 80% at 70% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
+                <!-- JS-animated wave canvas -->
+                <svg id="portal-wave-svg" viewBox="0 0 1200 800" preserveAspectRatio="none" class="absolute inset-0 w-full h-full" style="opacity: 0.22;"></svg>
+                <!-- Radial glow accent in top-right -->
+                <div class="absolute top-0 right-0 w-[70%] h-[70%]" style="background: radial-gradient(ellipse at 80% 30%, rgba(211,189,115,0.06) 0%, transparent 60%);"></div>
             </div>
             <div class="max-w-2xl w-full p-8 relative z-10">
                 <div class="glass-card p-12 rounded-[4rem] border-white/10 shadow-2xl text-center">
@@ -1105,13 +1563,18 @@ window.showSecurity = function() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     initScrollReveal();
     window.loadSecurityData();
+    window.initWaveAnimation('portal-wave-svg');
 }
 
 function renderSecuritySettings() {
     return `
         <section class="min-h-screen bg-primary pt-32 pb-24 relative overflow-hidden">
-            <div class="absolute inset-0 z-0 opacity-10">
-                <img src="assets/modern.webp" alt="Background" class="w-full h-full object-cover" loading="lazy">
+            <!-- Animated Wave Mesh Background -->
+            <div class="absolute inset-0 z-0" style="background: radial-gradient(ellipse 120% 80% at 70% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
+                <!-- JS-animated wave canvas -->
+                <svg id="portal-wave-svg" viewBox="0 0 1200 800" preserveAspectRatio="none" class="absolute inset-0 w-full h-full" style="opacity: 0.22;"></svg>
+                <!-- Radial glow accent in top-right -->
+                <div class="absolute top-0 right-0 w-[70%] h-[70%]" style="background: radial-gradient(ellipse at 80% 30%, rgba(211,189,115,0.06) 0%, transparent 60%);"></div>
             </div>
             <div class="max-w-4xl mx-auto px-4 relative z-10">
                 <div class="flex items-center justify-between mb-12">
@@ -1349,10 +1812,12 @@ function renderPortal() {
 
     return `
     <section class="min-h-screen pt-28 relative overflow-hidden bg-primary">
-        <!-- Background Image with Overlay -->
-        <div class="absolute inset-0 z-0">
-            <img alt="Modern luxury architecture" class="w-full h-full object-cover grayscale-[20%] opacity-40" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD8reoSJJiSaylM7f4pV1doOnLZvBxGGSi0XFjuaC-5Dbbfg_Gu2fUR_YdvCNFZRCTxcTuzsPtfGzSQJ-YtlleDdrvKdlMMPQ3YqXir6VoCf7PaH9szTBShUfkd79ftEoS9WKYS5TVvA1ZlD9fODBKtntWhH29sqhh61S9CRP7-Xeha7n7BDmBmUkqTHU69pqS4zWnusZiBFzUKG2xyH-UgSyrLyCKvDWMaRf1D1PCgmsXbjUy6QkyEmCac828gdgkQgJVd2OJRiNNO"/>
-            <div class="absolute inset-0 hero-gradient-overlay"></div>
+        <!-- Animated Wave Mesh Background -->
+        <div class="absolute inset-0 z-0" style="background: radial-gradient(ellipse 120% 80% at 70% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
+            <!-- JS-animated wave canvas -->
+            <svg id="portal-wave-svg" viewBox="0 0 1200 800" preserveAspectRatio="none" class="absolute inset-0 w-full h-full" style="opacity: 0.22;"></svg>
+            <!-- Radial glow accent in top-right -->
+            <div class="absolute top-0 right-0 w-[70%] h-[70%]" style="background: radial-gradient(ellipse at 80% 30%, rgba(211,189,115,0.06) 0%, transparent 60%);"></div>
         </div>
 
         <!-- Main Editorial Application Container -->
@@ -1509,7 +1974,14 @@ function renderPortal() {
 // --- PHASE 9: ADMIN DASHBOARD ---
 function renderAdminDashboard() {
     return `
-        <section class="min-h-screen bg-primary pt-32 pb-24">
+        <section class="min-h-screen bg-primary pt-32 pb-24 relative overflow-hidden">
+            <!-- Animated Wave Mesh Background -->
+            <div class="absolute inset-0 z-0" style="background: radial-gradient(ellipse 120% 80% at 70% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
+                <!-- JS-animated wave canvas -->
+                <svg id="portal-wave-svg" viewBox="0 0 1200 800" preserveAspectRatio="none" class="absolute inset-0 w-full h-full" style="opacity: 0.22;"></svg>
+                <!-- Radial glow accent in top-right -->
+                <div class="absolute top-0 right-0 w-[70%] h-[70%]" style="background: radial-gradient(ellipse at 80% 30%, rgba(211,189,115,0.06) 0%, transparent 60%);"></div>
+            </div>
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between items-center mb-12">
                     <div>
@@ -1582,10 +2054,15 @@ function renderAdminDashboard() {
                         </form>
                     </div>
 
-                    <!-- Documents -->
+                    <!-- Documents & Conditions -->
                     <div class="glass-card rounded-[3rem] border-white/10 p-8 flex flex-col">
-                        <h3 class="text-xl font-black text-white uppercase tracking-wider mb-6">Uploaded Documents</h3>
-                        <div id="admin-documents-list" class="space-y-2 mb-6 max-h-48 overflow-y-auto">
+                        <h3 class="text-xl font-black text-white uppercase tracking-wider mb-4">Needs List (Conditions)</h3>
+                        <div id="admin-conditions-list" class="mb-6 border-b border-white/10 pb-6">
+                             <p class="text-white/40 text-sm italic">Select an application to manage conditions.</p>
+                        </div>
+
+                        <h3 class="text-xl font-black text-white uppercase tracking-wider mb-6 mt-2">Uploaded Documents</h3>
+                        <div id="admin-documents-list" class="space-y-2 mb-6 max-h-48 overflow-y-auto pr-2">
                             <p class="text-white/40 text-sm italic">Select an application to view documents.</p>
                         </div>
                         
@@ -1731,36 +2208,46 @@ window.viewApplication = async function(appId, name, userId) {
                 const saveBtn = document.getElementById('admin-save-notes-btn');
                 saveBtn.onclick = () => window.saveAdminNotes(appId);
             }
+                // Render Admin Conditions (Needs List)
+                const conditionsList = document.getElementById('admin-conditions-list');
+                if (conditionsList && fullApp) {
+                    let condHtml = `
+                        <div class="mb-4 flex gap-2">
+                            <input type="text" id="admin-new-condition-name" placeholder="E.g., 2024 W2" class="flex-1 bg-white/5 border border-white/20 rounded-lg px-4 py-2 text-white text-sm outline-none focus:border-secondary-fixed">
+                            <button onclick="window.adminAddCondition('${appId}')" class="bg-secondary-fixed text-primary px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-white transition-all">Request</button>
+                        </div>
+                        <div class="space-y-2 max-h-48 overflow-y-auto pr-2">
+                    `;
+                    
+                    if (!fullApp.conditions || fullApp.conditions.length === 0) {
+                        condHtml += '<p class="text-white/40 text-sm italic">No conditions requested.</p>';
+                    } else {
+                        fullApp.conditions.forEach(cond => {
+                            condHtml += `
+                                <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <div>
+                                            <div class="text-white font-bold text-sm">${cond.name}</div>
+                                            <div class="text-[10px] uppercase font-bold tracking-widest ${cond.status === 'Pending' ? 'text-yellow-400' : cond.status === 'Uploaded' ? 'text-blue-400' : cond.status === 'Accepted' ? 'text-green-400' : 'text-red-400'}">${cond.status}</div>
+                                        </div>
+                                        <select onchange="window.adminUpdateCondition('${appId}', '${cond._id}', this.value)" class="bg-primary border border-white/20 rounded-lg text-white text-xs px-2 py-1 outline-none">
+                                            <option value="" disabled selected>Update</option>
+                                            <option value="Pending">Pending</option>
+                                            <option value="Accepted">Accepted</option>
+                                            <option value="Rejected">Rejected</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    }
+                    condHtml += '</div>';
+                    conditionsList.innerHTML = condHtml;
+                }
         } catch (e) {
             console.error(e);
         }
 
-        // Fetch user documents
-        try {
-            const docsRes = await authFetch(`/api/admin/documents/${userId}`);
-            const docsData = await docsRes.json();
-            const docsList = document.getElementById('admin-documents-list');
-            
-            if (docsData.documents.length === 0) {
-                docsList.innerHTML = '<p class="text-white/40 text-sm">No documents found.</p>';
-            } else {
-                docsList.innerHTML = docsData.documents.map(doc => `
-                    <div class="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10 mb-2">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-secondary-fixed">
-                                <span class="material-symbols-outlined text-xl">description</span>
-                            </div>
-                            <div>
-                                <div class="text-white font-bold text-sm">${doc.originalName}</div>
-                                <div class="text-white/40 text-[10px] uppercase font-bold tracking-widest">${doc.category} • ${(doc.size / 1024 / 1024).toFixed(2)} MB</div>
-                            </div>
-                        </div>
-                    </div>
-                `).join('');
-            }
-        } catch (e) {
-            console.error(e);
-        }
         // Fetch user documents
         try {
             const docsRes = await authFetch(`/api/admin/documents/${userId}`);
@@ -1929,7 +2416,7 @@ window.addSampleApp = async function() {
             await window.checkUserStatus(); // Refresh state
             const appContent = document.getElementById('app-content');
             if (appContent) {
-                appContent.innerHTML = renderPortal();
+                appContent.innerHTML = renderPortal(); document.querySelector(`nav`).classList.remove(`hidden`);
                 window.loadDocuments();
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 initScrollReveal();
@@ -1951,7 +2438,7 @@ window.resetBorrower = async function() {
             
             const appContent = document.getElementById('app-content');
             if (appContent) {
-                appContent.innerHTML = renderPortal();
+                appContent.innerHTML = renderPortal(); document.querySelector(`nav`).classList.remove(`hidden`);
                 window.loadDocuments();
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 initScrollReveal();
@@ -1961,6 +2448,33 @@ window.resetBorrower = async function() {
         console.error('Failed to reset borrower:', err);
     }
 }
+
+window.adminAddCondition = async function(appId) {
+    const nameInput = document.getElementById('admin-new-condition-name');
+    if (!nameInput.value) return;
+
+    try {
+        await authFetch('/api/admin/applications/' + appId + '/conditions', {
+            method: 'POST',
+            body: JSON.stringify({ name: nameInput.value })
+        });
+        window.loadAdminData();
+        alert('Condition requested successfully.');
+        document.getElementById('admin-active-app').classList.add('hidden');
+    } catch (e) { console.error(e); }
+};
+
+window.adminUpdateCondition = async function(appId, conditionId, status) {
+    try {
+        await authFetch('/api/admin/applications/' + appId + '/conditions/' + conditionId, {
+            method: 'PATCH',
+            body: JSON.stringify({ status })
+        });
+        window.loadAdminData();
+        alert('Condition status updated.');
+        document.getElementById('admin-active-app').classList.add('hidden');
+    } catch (e) { console.error(e); }
+};
 
 // --- PHASE 9: DOCUMENTS ---
 window.uploadDocument = async function(event) {
@@ -2014,17 +2528,82 @@ window.deleteDocument = async function(docId) {
     }
 }
 
+window.uploadConditionDoc = async function(event, conditionId, applicationId) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('category', 'Condition Fulfillment');
+    formData.append('conditionId', conditionId);
+    formData.append('applicationId', applicationId);
+
+    try {
+        const token = localStorage.getItem('jwt_token');
+        const response = await fetch('/api/documents/upload', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token },
+            body: formData
+        });
+        
+        if (response.ok) {
+            await window.checkUserStatus(); // Refresh user status to get updated conditions
+            window.loadDocuments();
+        } else {
+            const data = await response.json();
+            alert('Upload failed: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Upload Error:', error);
+        alert('Upload completely failed.');
+    }
+}
+
 window.loadDocuments = async function() {
     try {
         const res = await authFetch('/api/documents');
         const data = await res.json();
         
         const list = document.getElementById('documents-list');
+        const conditions = window.userStatus?.application?.conditions || [];
+
         if (list) {
+            let html = '';
+            
+            // Needs List Header
+            if (conditions.length > 0) {
+                html += '<h4 class="font-headline text-lg font-bold text-secondary-fixed mb-4 uppercase tracking-widest mt-4 border-b border-white/10 pb-2">Needs List (Action Required)</h4>';
+                
+                conditions.forEach(cond => {
+                    const isPending = cond.status === 'Pending' || cond.status === 'Rejected';
+                    html += `
+                        <div class="flex items-center justify-between p-4 rounded-xl ${isPending ? 'bg-secondary-fixed/10 border-secondary-fixed/30' : 'bg-green-500/10 border-green-500/30'} border mb-2">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center ${isPending ? 'text-secondary-fixed' : 'text-green-500'}">
+                                    <span class="material-symbols-outlined text-xl">${isPending ? 'error' : 'check_circle'}</span>
+                                </div>
+                                <div>
+                                    <div class="text-white font-bold text-sm">${cond.name}</div>
+                                    <div class="text-white/40 text-[10px] uppercase font-bold tracking-widest">${cond.status} ${cond.brokerNote ? ' • Note: ' + cond.brokerNote : ''}</div>
+                                </div>
+                            </div>
+                            ${isPending ? `
+                                <div class="relative overflow-hidden group">
+                                    <button class="bg-secondary-fixed text-primary px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest">Upload</button>
+                                    <input type="file" onchange="window.uploadConditionDoc(event, '${cond._id}', '${window.userStatus.application._id}')" class="absolute inset-0 opacity-0 cursor-pointer">
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                });
+            }
+
+            html += '<h4 class="font-headline text-lg font-bold text-white mb-4 uppercase tracking-widest mt-8 border-b border-white/10 pb-2">Uploaded Documents</h4>';
+
             if (data.documents.length === 0) {
-                list.innerHTML = '<p class="text-white/40 text-sm italic">No documents uploaded yet.</p>';
+                html += '<p class="text-white/40 text-sm italic">No documents uploaded yet.</p>';
             } else {
-                list.innerHTML = data.documents.map(doc => `
+                html += data.documents.map(doc => `
                     <div class="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10 mb-2">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-secondary-fixed">
@@ -2041,6 +2620,7 @@ window.loadDocuments = async function() {
                     </div>
                 `).join('');
             }
+            list.innerHTML = html;
         }
     } catch (error) {
         console.error('Failed to load documents:', error);
@@ -2382,4 +2962,96 @@ window.addResidencyRow = function() {
         `;
         list.appendChild(row);
     }
+}
+
+function renderAgentDashboard() {
+    const user = window.userStatus || {};
+    return `
+        <div class="min-h-screen bg-primary pb-24 relative overflow-hidden">
+            <!-- Animated Wave Mesh Background -->
+            <div class="absolute inset-0 z-0" style="background: radial-gradient(ellipse 120% 80% at 70% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
+                <svg id="portal-wave-svg" viewBox="0 0 1200 800" preserveAspectRatio="none" class="absolute inset-0 w-full h-full" style="opacity: 0.15;"></svg>
+            </div>
+
+            <div class="max-w-7xl mx-auto px-6 relative z-10 pt-32">
+                <div class="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-16 reveal reveal-up">
+                    <div>
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="px-3 py-1 bg-secondary-fixed/10 border border-secondary-fixed/20 text-secondary-fixed text-[10px] font-black uppercase tracking-widest rounded-full">Professional Portal</span>
+                        </div>
+                        <h1 class="text-4xl md:text-6xl font-black text-white uppercase tracking-tight">Expert <span class="text-secondary-fixed">Dashboard</span></h1>
+                        <p class="text-white/40 font-bold uppercase tracking-[0.2em] mt-2">Welcome back, ${user.name || 'Agent'}</p>
+                    </div>
+                    
+                    <div class="flex items-center gap-4">
+                        <div class="text-right hidden md:block">
+                            <div class="text-[10px] font-black text-white/20 uppercase tracking-widest mb-1">Affiliated Brokerage</div>
+                            <div class="text-white font-bold">${user.brokerageName || 'Independent'}</div>
+                        </div>
+                        <div class="w-16 h-16 rounded-2xl glass-card border-white/10 flex items-center justify-center text-secondary-fixed">
+                             <span class="material-symbols-outlined text-3xl">verified</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <!-- Agent Stats -->
+                    <div class="glass-card p-10 rounded-[3rem] border-white/10 reveal reveal-up">
+                        <div class="flex items-center gap-4 mb-8 text-secondary-fixed">
+                            <span class="material-symbols-outlined">group</span>
+                            <span class="text-[10px] font-black uppercase tracking-widest">Active Pipeline</span>
+                        </div>
+                        <div class="text-5xl font-black text-white mb-2 italic">0</div>
+                        <p class="text-white/40 text-xs font-bold uppercase tracking-widest mb-8">Loan Applications</p>
+                        <button disabled class="w-full py-4 rounded-2xl bg-white/5 border border-white/10 text-white/20 font-black uppercase tracking-widest text-[10px] cursor-not-allowed">View Pipeline (Coming Soon)</button>
+                    </div>
+
+                    <!-- Professional Credentials -->
+                    <div class="glass-card p-10 rounded-[3rem] border-white/10 reveal reveal-up" style="transition-delay: 100ms">
+                        <div class="flex items-center gap-4 mb-8 text-secondary-fixed">
+                            <span class="material-symbols-outlined">badge</span>
+                            <span class="text-[10px] font-black uppercase tracking-widest">Verified Credentials</span>
+                        </div>
+                        <div class="space-y-4">
+                             <div class="flex justify-between items-center">
+                                <span class="text-white/30 text-[10px] font-black uppercase tracking-widest">NMLS ID</span>
+                                <span class="text-white font-bold">${user.nmlsId || 'Pending'}</span>
+                             </div>
+                             <div class="flex justify-between items-center">
+                                <span class="text-white/30 text-[10px] font-black uppercase tracking-widest">License</span>
+                                <span class="text-white font-bold">${user.licenseState || 'Pending'} State</span>
+                             </div>
+                             <div class="flex justify-between items-center">
+                                <span class="text-white/30 text-[10px] font-black uppercase tracking-widest">Status</span>
+                                <span class="text-green-400 font-bold uppercase tracking-widest text-[10px]">Active Member</span>
+                             </div>
+                        </div>
+                        <button onclick="window.showSecurity()" class="w-full py-4 rounded-2xl bg-secondary-fixed text-primary font-black uppercase tracking-widest text-[10px] mt-8 hover:bg-white transition-all">Account Security</button>
+                    </div>
+
+                    <!-- Resource Center -->
+                    <div class="glass-card p-10 rounded-[3rem] border-white/10 reveal reveal-up" style="transition-delay: 200ms">
+                        <div class="flex items-center gap-4 mb-8 text-secondary-fixed">
+                            <span class="material-symbols-outlined">menu_book</span>
+                            <span class="text-[10px] font-black uppercase tracking-widest">Agent Resources</span>
+                        </div>
+                        <ul class="space-y-4 mb-8">
+                            <li><a href="#" class="text-white/60 hover:text-white text-sm font-medium transition-colors">Marketing Toolkits</a></li>
+                            <li><a href="#" class="text-white/60 hover:text-white text-sm font-medium transition-colors">Compliance Guidelines</a></li>
+                            <li><a href="#" class="text-white/60 hover:text-white text-sm font-medium transition-colors">Lending Guidelines</a></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Coming Soon Teaser -->
+                <div class="mt-16 p-16 rounded-[4rem] border-2 border-dashed border-white/5 flex flex-col items-center text-center reveal reveal-up">
+                    <div class="w-24 h-24 rounded-[2rem] bg-white/5 flex items-center justify-center text-white/10 mb-8">
+                        <span class="material-symbols-outlined text-5xl">rocket_launch</span>
+                    </div>
+                    <h3 class="text-2xl font-black text-white/20 uppercase tracking-widest mb-4">Pipeline Management is Coming</h3>
+                    <p class="text-white/10 font-bold uppercase tracking-widest text-xs max-w-md">Our team is engineering a high-velocity dashboard for you to invite borrowers, track appraisals, and close deals in record time.</p>
+                </div>
+            </div>
+        </div>
+    `;
 }
