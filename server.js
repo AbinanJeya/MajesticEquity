@@ -8,6 +8,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const { Server } = require("socket.io");
 const PDFDocument = require('pdfkit');
@@ -24,6 +25,19 @@ const PlaidItem = require('./models/PlaidItem');
 const User = require('./models/User');
 const Document = require('./models/Document');
 const Application = require('./models/Application');
+const AgentProfile = require('./models/AgentProfile');
+const AgentInvite = require('./models/AgentInvite');
+const {
+    canAccessApplication,
+    canAgentInviteBorrower,
+    canMessageApplication,
+    hashInviteToken,
+    isInviteUsable
+} = require('./utils/agentNetwork');
+const {
+    isOfficialRegistryUrl,
+    verifyAgentAgainstOfficialRegistry
+} = require('./utils/agentVerification');
 
 // =============================================
 // DATABASE CONNECTION
@@ -40,7 +54,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'majesticequity_dev_secret_2026';
 // EXPRESS APP + SECURITY
 // =============================================
 const { generateFNM } = require('./utils/fnmExporter');
-const stripe = require('stripe')((process.env.STRIPE_SECRET_KEY || '').trim());
+const stripe = require('stripe')((process.env.STRIPE_SECRET_KEY || 'sk_test_local_placeholder').trim());
 
 const app = express();
 const server = http.createServer(app);
@@ -334,17 +348,117 @@ function requireAdmin(req, res, next) {
     next();
 }
 
+async function getAgentProfileForUser(userId) {
+    if (!userId) return null;
+    return AgentProfile.findOne({ userId }).lean();
+}
+
+async function buildAccessUser(req) {
+    const user = await User.findById(req.userId).lean();
+    if (!user) return null;
+    const agentProfile = user.role === 'agent' ? await getAgentProfileForUser(user._id) : null;
+    return {
+        id: user._id.toString(),
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        agentProfile
+    };
+}
+
+async function requireApprovedAgent(req, res, next) {
+    try {
+        const accessUser = await buildAccessUser(req);
+        if (!accessUser || !canAgentInviteBorrower(accessUser)) {
+            return res.status(403).json({ error: 'Approved Ontario agent verification is required.' });
+        }
+        req.accessUser = accessUser;
+        next();
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+}
+
+function publicBaseUrl(req) {
+    return process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get('host')}`;
+}
+
+async function runAutomatedAgentVerification(profile, user) {
+    const verification = await verifyAgentAgainstOfficialRegistry({
+        name: user.name,
+        licenseNumber: profile.licenseNumber,
+        licenseClass: profile.licenseClass,
+        brokerageName: profile.brokerageName,
+        brokerageLicenseNumber: profile.brokerageLicenseNumber,
+        registryProfileUrl: profile.registryProfileUrl
+    });
+
+    profile.automatedVerification = verification;
+    profile.lastCheckedAt = verification.checkedAt;
+    profile.verifiedAt = verification.status === 'passed' ? verification.checkedAt : undefined;
+    profile.verifiedBy = undefined;
+    profile.rejectionReason = verification.failures.join(' ');
+    profile.verificationStatus = verification.status === 'passed' ? 'approved' : 'pending_review';
+    await profile.save();
+    return verification;
+}
+
 // =============================================
 // AUTH ENDPOINTS
 // =============================================
 
+app.get('/api/invites/:token', async (req, res) => {
+    try {
+        const invite = await AgentInvite.findOne({ tokenHash: hashInviteToken(req.params.token) })
+            .populate('agentId', 'name email brokerageName')
+            .lean();
+        if (!isInviteUsable(invite)) {
+            return res.status(404).json({ error: 'Invite not found or expired.' });
+        }
+
+        const agentProfile = await AgentProfile.findOne({ userId: invite.agentId._id }).lean();
+        if (!agentProfile || agentProfile.verificationStatus !== 'approved') {
+            return res.status(404).json({ error: 'Invite is not currently available.' });
+        }
+
+        res.json({
+            invite: {
+                borrowerEmail: invite.borrowerEmail,
+                borrowerName: invite.borrowerName,
+                expiresAt: invite.expiresAt,
+                agent: {
+                    name: invite.agentId.name,
+                    email: invite.agentId.email,
+                    brokerageName: agentProfile.brokerageName,
+                    licenseNumber: agentProfile.licenseNumber,
+                    licenseClass: agentProfile.licenseClass,
+                    registryProfileUrl: agentProfile.registryProfileUrl
+                }
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post('/api/auth/register', authLimiter, async (req, res) => {
     try {
-        const { name, email, phone, password } = req.body;
+        const { name, email, phone, password, inviteToken } = req.body;
 
         // Validation
         if (!name || !email || !phone || !password) {
             return res.status(400).json({ error: 'Name, email, phone, and password are required.' });
+        }
+
+        let invite = null;
+        if (inviteToken) {
+            invite = await AgentInvite.findOne({ tokenHash: hashInviteToken(inviteToken) });
+            if (!isInviteUsable(invite)) {
+                return res.status(400).json({ error: 'This agent invite is expired or no longer available.' });
+            }
+            if (invite.borrowerEmail && invite.borrowerEmail !== email.toLowerCase()) {
+                return res.status(400).json({ error: 'This invite was issued for a different email address.' });
+            }
         }
 
         let user = await User.findOne({ email: email.toLowerCase() });
@@ -388,6 +502,13 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         }
         await user.save();
 
+        if (invite) {
+            invite.status = 'used';
+            invite.usedBorrowerId = user._id;
+            invite.usedAt = new Date();
+            await invite.save();
+        }
+
         // Send Email Code
         await sendEmail(user.email, 'Verify Your Account — MajesticEquity', `
             <div style="font-family: 'Manrope', sans-serif; padding: 20px; color: #1a365d;">
@@ -404,7 +525,8 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         res.json({
             success: true,
             verificationRequired: true,
-            email: user.email
+            email: user.email,
+            inviteAccepted: !!invite
         });
     } catch (error) {
         console.error('Register Error:', error);
@@ -414,11 +536,24 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
 app.post('/api/auth/register-agent', authLimiter, async (req, res) => {
     try {
-        const { name, email, phone, password, nmlsId, brokerageName, licenseState } = req.body;
+        const {
+            name,
+            email,
+            phone,
+            password,
+            licenseNumber,
+            licenseClass,
+            brokerageName,
+            brokerageLicenseNumber,
+            registryProfileUrl
+        } = req.body;
 
-        // Validation - Agents must provide professional credentials
-        if (!name || !email || !phone || !password || !nmlsId || !brokerageName || !licenseState) {
-            return res.status(400).json({ error: 'All professional fields (NMLS, Brokerage, License State) are required for agents.' });
+        if (!name || !email || !phone || !password || !licenseNumber || !licenseClass || !brokerageName || !brokerageLicenseNumber || !registryProfileUrl) {
+            return res.status(400).json({ error: 'Name, contact details, FSRA licence, licence class, brokerage, brokerage licence, registry URL, and password are required.' });
+        }
+
+        if (!isOfficialRegistryUrl(registryProfileUrl)) {
+            return res.status(400).json({ error: 'Registry URL must be an official FSRA or FSCO HTTPS registry URL.' });
         }
 
         let user = await User.findOne({ email: email.toLowerCase() });
@@ -437,9 +572,9 @@ app.post('/api/auth/register-agent', authLimiter, async (req, res) => {
             user.phone = phone;
             user.password = hashedPassword;
             user.role = 'agent';
-            user.nmlsId = nmlsId;
+            user.nmlsId = licenseNumber;
             user.brokerageName = brokerageName;
-            user.licenseState = licenseState;
+            user.licenseState = 'ON';
             user.verificationCodes = {
                 emailCode: await bcrypt.hash(emailCode, salt),
                 phoneCode: await bcrypt.hash(phoneCode, salt),
@@ -452,9 +587,9 @@ app.post('/api/auth/register-agent', authLimiter, async (req, res) => {
                 password: hashedPassword,
                 name: name,
                 role: 'agent',
-                nmlsId,
+                nmlsId: licenseNumber,
                 brokerageName,
-                licenseState,
+                licenseState: 'ON',
                 isVerified: false,
                 verificationCodes: {
                     emailCode: await bcrypt.hash(emailCode, salt),
@@ -465,20 +600,43 @@ app.post('/api/auth/register-agent', authLimiter, async (req, res) => {
         }
         await user.save();
 
+        const agentProfile = await AgentProfile.findOneAndUpdate(
+            { userId: user._id },
+            {
+                userId: user._id,
+                jurisdiction: 'CA-ON',
+                licenseNumber,
+                licenseClass,
+                brokerageName,
+                brokerageLicenseNumber,
+                registryProfileUrl,
+                verificationStatus: 'pending_review',
+                automatedVerification: { status: 'unchecked', failures: [] },
+                verifiedAt: undefined,
+                verifiedBy: undefined,
+                lastCheckedAt: undefined,
+                rejectionReason: '',
+                reviewNotes: ''
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        const automatedVerification = await runAutomatedAgentVerification(agentProfile, user);
+
         // Professional Welcome Email
         await sendEmail(user.email, 'Join the MajesticEquity Expert Network', `
             <div style="font-family: 'Manrope', sans-serif; padding: 20px; color: #1a365d;">
                 <h2 style="color: #D3BD73;">Professional Partner Verification</h2>
                 <p>Welcome to the MajesticEquity expert network, <strong>${name}</strong>.</p>
-                <p>Please use the following code to verify your professional account:</p>
+                    <p>Please use the following code to verify your professional account:</p>
                 <div style="font-size: 32px; font-weight: bold; letter-spacing: 10px; color: #D3BD73; margin: 30px 0; background: #f8fafc; padding: 20px; display: inline-block; border-radius: 8px;">${emailCode}</div>
                 <p>Registered Professional Credentials:</p>
                 <ul>
-                    <li>NMLS ID: ${nmlsId}</li>
+                    <li>FSRA Licence: ${licenseNumber}</li>
+                    <li>Licence Class: ${licenseClass}</li>
                     <li>Brokerage: ${brokerageName}</li>
-                    <li>License State: ${licenseState}</li>
+                    <li>Jurisdiction: Ontario</li>
                 </ul>
-                <p>This code will expire in 15 minutes.</p>
+                <p>This code will expire in 15 minutes. Client access is enabled only if our automated official-registry check confirms every submitted licence detail.</p>
             </div>
         `);
 
@@ -487,7 +645,8 @@ app.post('/api/auth/register-agent', authLimiter, async (req, res) => {
         res.json({
             success: true,
             verificationRequired: true,
-            email: user.email
+            email: user.email,
+            professionalVerification: automatedVerification
         });
     } catch (error) {
         console.error('Agent Register Error:', error);
@@ -579,52 +738,6 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
         });
     } catch (error) {
         console.error('Login Error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.post('/api/user_status', authenticateToken, async (req, res) => {
-    try {
-        const user = await User.findOne({ email: req.userEmail });
-        if (!user) return res.status(404).json({ error: 'User not found' });
-
-        const item = await PlaidItem.findOne({ userId: user._id });
-        const application = await Application.findOne({ userEmail: user.email, status: { $ne: 'Funded' } }).sort({ createdAt: -1 });
-
-        // Compute real progress from DB milestone booleans
-        const app = application ? application.toObject() : null;
-        let completedSteps = 0;
-        if (app) {
-            if (app.identityVerified) completedSteps++;
-            if (app.incomeVerified) completedSteps++;
-            if (app.assetsVerified) completedSteps++;
-            if (app.creditVerified) completedSteps++;
-            if (app.status !== 'Draft') completedSteps++; // Submitted
-        } else if (user.identityStatus === 'completed' || user.identityStatus === 'Verified') {
-            completedSteps = 1; // Identity done but no app yet
-        }
-        const progressPercent = Math.round((completedSteps / 5) * 100);
-
-        const data = {
-            isSynced: !!item || (application && application.assetsVerified),
-            email: user.email,
-            name: user.name,
-            role: user.role,
-            identityStatus: user.identityStatus,
-            creditScore: user.creditScore,
-            currentStep: user.currentStep || 1,
-            application: app,
-            completedSteps,
-            progressPercent
-        };
-
-        if (data.application) {
-            data.application.unreadMessages = application.messages.filter(m => !m.isRead && m.senderRole !== user.role).length;
-        }
-
-        res.json(data);
-    } catch (error) {
-        console.error('User Status Error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -792,6 +905,7 @@ app.post('/api/exchange_public_token', authenticateToken, async (req, res) => {
 
         const user = await User.findOne({ email: req.userEmail });
         if (!user) return res.status(404).json({ error: 'User not found.' });
+        const usedInvite = await AgentInvite.findOne({ usedBorrowerId: user._id }).sort({ usedAt: -1 });
 
         const newItem = new PlaidItem({
             userId: user._id,
@@ -1088,14 +1202,39 @@ app.post('/api/documents/upload', authenticateToken, upload.single('file'), asyn
 async function getUserStatus(req, res) {
     try {
         const user = await User.findOne({ email: req.userEmail }, '-password');
-        const application = await Application.findOne({ userEmail: req.userEmail }).sort({ createdAt: -1 });
-        
-        res.json({
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        const item = await PlaidItem.findOne({ userId: user._id });
+        const agentProfile = user.role === 'agent' ? await AgentProfile.findOne({ userId: user._id }) : null;
+        const application = await Application.findOne({ userEmail: user.email, status: { $ne: 'Funded' } }).sort({ createdAt: -1 });
+
+        const app = application ? application.toObject() : null;
+        let completedSteps = 0;
+        if (app) {
+            if (app.identityVerified) completedSteps++;
+            if (app.incomeVerified) completedSteps++;
+            if (app.assetsVerified) completedSteps++;
+            if (app.creditVerified) completedSteps++;
+            if (app.status !== 'Draft') completedSteps++;
+        } else if (user.identityStatus === 'completed' || user.identityStatus === 'Verified') {
+            completedSteps = 1;
+        }
+
+        const data = {
             ...user.toObject(),
             role: req.userRole || user.role,
-            application: application,
-            isSynced: !!user.plaidAccessToken || !!application // Phase 8 marker
-        });
+            application: app,
+            agentProfile: agentProfile ? agentProfile.toObject() : null,
+            isSynced: !!item || (application && application.assetsVerified),
+            completedSteps,
+            progressPercent: Math.round((completedSteps / 5) * 100)
+        };
+
+        if (data.application) {
+            data.application.unreadMessages = application.messages.filter(m => !m.isRead && m.senderRole !== user.role).length;
+        }
+
+        res.json(data);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -1154,6 +1293,9 @@ app.post('/api/applications/submit', authenticateToken, async (req, res) => {
             application.identityVerified = user.identityStatus === 'Verified';
             application.creditVerified = !!user.creditScore;
             application.creditScore = user.creditScore;
+            if (usedInvite && !application.assignedAgentId) {
+                application.assignedAgentId = usedInvite.agentId;
+            }
             
             // Map 1003 Fields
             application.loanAmount = req.body.loanAmount || application.loanAmount;
@@ -1194,7 +1336,15 @@ app.post('/api/applications/submit', authenticateToken, async (req, res) => {
                 declarations: req.body.declarations || {},
                 demographics: req.body.demographics || {}
             });
+            if (usedInvite) {
+                application.assignedAgentId = usedInvite.agentId;
+            }
             await application.save();
+        }
+
+        if (usedInvite && !usedInvite.usedApplicationId) {
+            usedInvite.usedApplicationId = application._id;
+            await usedInvite.save();
         }
 
         // Send email notification
@@ -1440,12 +1590,12 @@ app.post('/api/applications/:id/messages', authenticateToken, async (req, res) =
         const application = await Application.findById(req.params.id);
         if (!application) return res.status(404).json({ error: 'Application not found.' });
 
-        // Check access: borrower can only message their own, admin can message any
-        if (req.userRole !== 'admin' && application.userEmail !== req.userEmail) {
+        const accessUser = await buildAccessUser(req);
+        if (!canMessageApplication(accessUser, application)) {
             return res.status(403).json({ error: 'Access denied.' });
         }
 
-        const senderName = req.userRole === 'admin' ? 'Broker Team' : (application.userName || req.userEmail);
+        const senderName = req.userRole === 'admin' ? 'Broker Team' : (accessUser.name || application.userName || req.userEmail);
         const newMessage = {
             sender: req.userEmail,
             senderName: senderName,
@@ -1464,7 +1614,13 @@ app.post('/api/applications/:id/messages', authenticateToken, async (req, res) =
         });
 
         // Notify the other party
-        const recipient = req.userRole === 'admin' ? application.userEmail : 'admin@majesticequity.com';
+        let recipient = 'admin@majesticequity.com';
+        if (req.userRole === 'admin' || req.userRole === 'agent') {
+            recipient = application.userEmail;
+        } else if (application.assignedAgentId) {
+            const assignedAgent = await User.findById(application.assignedAgentId);
+            recipient = assignedAgent?.email || recipient;
+        }
         await sendEmail(recipient, 'New Message — MajesticEquity Portal', `
             <h3>You have a new message</h3>
             <p><strong>From:</strong> ${senderName}</p>
@@ -1483,7 +1639,8 @@ app.get('/api/applications/:id/messages', authenticateToken, async (req, res) =>
         const application = await Application.findById(req.params.id);
         if (!application) return res.status(404).json({ error: 'Application not found.' });
 
-        if (req.userRole !== 'admin' && application.userEmail !== req.userEmail) {
+        const accessUser = await buildAccessUser(req);
+        if (!canAccessApplication(accessUser, application)) {
             return res.status(403).json({ error: 'Access denied.' });
         }
 
@@ -1567,6 +1724,139 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
     try {
         const users = await User.find({}, '-password').sort({ createdAt: -1 });
         res.json({ users });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/admin/agents', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const query = {};
+        if (req.query.status) query.verificationStatus = req.query.status;
+
+        const profiles = await AgentProfile.find(query)
+            .sort({ updatedAt: -1 })
+            .populate('userId', 'name email phone isVerified createdAt')
+            .populate('verifiedBy', 'name email');
+
+        res.json({ agents: profiles });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.patch('/api/admin/agents/:id/verification', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { status, registryProfileUrl, rejectionReason, reviewNotes } = req.body;
+        if (!['retry', 'rejected', 'suspended', 'pending_review'].includes(status)) {
+            return res.status(400).json({ error: 'Invalid verification status.' });
+        }
+
+        const profile = await AgentProfile.findById(req.params.id);
+        if (!profile) return res.status(404).json({ error: 'Agent profile not found.' });
+        const user = await User.findById(profile.userId);
+        if (!user) return res.status(404).json({ error: 'Agent user not found.' });
+
+        if (registryProfileUrl !== undefined) profile.registryProfileUrl = registryProfileUrl;
+        if (rejectionReason !== undefined) profile.rejectionReason = rejectionReason;
+        if (reviewNotes !== undefined) profile.reviewNotes = reviewNotes;
+
+        if (status === 'retry') {
+            await runAutomatedAgentVerification(profile, user);
+        } else {
+            profile.verificationStatus = status;
+            profile.lastCheckedAt = new Date();
+            if (status !== 'suspended') {
+                profile.verifiedAt = undefined;
+                profile.verifiedBy = undefined;
+            }
+            await profile.save();
+        }
+
+        req.app.get('io').emit('status_update', { updateType: 'agent_verification', agentId: profile.userId });
+        res.json({ success: true, agentProfile: profile });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/agent/invites', authenticateToken, requireApprovedAgent, async (req, res) => {
+    try {
+        const { borrowerEmail, borrowerName } = req.body;
+        const token = crypto.randomBytes(24).toString('hex');
+        const invite = new AgentInvite({
+            agentId: req.userId,
+            tokenHash: hashInviteToken(token),
+            borrowerEmail: borrowerEmail ? borrowerEmail.toLowerCase().trim() : '',
+            borrowerName: borrowerName || '',
+            expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+        });
+        await invite.save();
+
+        const inviteUrl = `${publicBaseUrl(req)}/?invite=${token}`;
+        if (invite.borrowerEmail) {
+            await sendEmail(invite.borrowerEmail, 'Your MajesticEquity Mortgage Portal Invitation', `
+                <h2>${req.accessUser.name || 'Your mortgage agent'} invited you to MajesticEquity</h2>
+                <p>Create your secure borrower portal account here:</p>
+                <p><a href="${inviteUrl}">${inviteUrl}</a></p>
+                <p>This invitation expires in 14 days.</p>
+            `);
+        }
+
+        res.json({
+            success: true,
+            invite: {
+                id: invite._id,
+                borrowerEmail: invite.borrowerEmail,
+                borrowerName: invite.borrowerName,
+                status: invite.status,
+                expiresAt: invite.expiresAt,
+                inviteUrl
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/agent/invites', authenticateToken, requireApprovedAgent, async (req, res) => {
+    try {
+        const invites = await AgentInvite.find({ agentId: req.userId })
+            .sort({ createdAt: -1 })
+            .select('-tokenHash');
+        res.json({ invites });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/agent/verification/retry', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.userId);
+        if (!user || user.role !== 'agent') {
+            return res.status(403).json({ error: 'Agent account required.' });
+        }
+
+        const profile = await AgentProfile.findOne({ userId: user._id });
+        if (!profile) return res.status(404).json({ error: 'Agent profile not found.' });
+        if (profile.verificationStatus === 'suspended') {
+            return res.status(403).json({ error: 'Suspended agents cannot retry verification.' });
+        }
+
+        const verification = await runAutomatedAgentVerification(profile, user);
+        req.app.get('io').emit('status_update', { updateType: 'agent_verification', agentId: profile.userId });
+        res.json({ success: true, agentProfile: profile, verification });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/agent/applications', authenticateToken, requireApprovedAgent, async (req, res) => {
+    try {
+        const applications = await Application.find({ assignedAgentId: req.userId })
+            .sort({ updatedAt: -1 })
+            .populate('documents');
+        res.json({ applications });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

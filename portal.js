@@ -9,6 +9,9 @@ window.trackEvent = function(category, action, label = '') {
     // In production, this would fire to Segment/Google Analytics/PostHog
 }
 
+window.pendingInviteToken = null;
+window.pendingInviteContext = null;
+
 // Global Socket Initialization
 let socket = null;
 if (typeof io !== 'undefined') {
@@ -46,6 +49,8 @@ if (typeof io !== 'undefined') {
             window.loadPortalData(); // Refresh borrower dash quietly
         } else if (window.userStatus && window.userStatus.role === 'admin') {
             window.loadAdminData(); // Refresh admin dash quietly
+        } else if (window.userStatus && window.userStatus.role === 'agent') {
+            window.loadAgentData();
         }
     });
 }
@@ -56,6 +61,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check for payment success redirect
     const params = new URLSearchParams(window.location.search);
     const isPaymentSuccess = params.get('payment') === 'success';
+    const inviteToken = params.get('invite');
+    if (inviteToken) {
+        window.pendingInviteToken = inviteToken;
+        await window.loadInviteContext(inviteToken);
+        window.showRegister();
+        return;
+    }
 
     if (isPaymentSuccess) {
         appContent.innerHTML = `
@@ -97,7 +109,7 @@ window.showPortalDashboard = function() {
         window.loadAdminData();
     } else if (window.userStatus && window.userStatus.role === 'agent') {
         appContent.innerHTML = renderAgentDashboard();
-        // future: window.loadAgentData();
+        window.loadAgentData();
     } else {
         appContent.innerHTML = renderPortal();
         window.loadDocuments();
@@ -247,7 +259,8 @@ window.submitRegister = async function() {
                 name: nameInput ? nameInput.value : '', 
                 email: emailInput.value, 
                 phone: phoneInput ? phoneInput.value : '',
-                password: passInput.value 
+                password: passInput.value,
+                inviteToken: window.pendingInviteToken || undefined
             })
         });
         const data = await res.json();
@@ -283,6 +296,20 @@ window.submitRegister = async function() {
     } catch (error) {
         if (errorEl) errorEl.textContent = 'Server unavailable. Is the backend running?';
         if (btn) btn.innerHTML = 'Create Secure Account';
+    }
+}
+
+window.loadInviteContext = async function(token) {
+    try {
+        const res = await fetch('/api/invites/' + encodeURIComponent(token));
+        const data = await res.json();
+        if (res.ok) {
+            window.pendingInviteContext = data.invite;
+        } else {
+            window.pendingInviteContext = { error: data.error || 'Invite unavailable.' };
+        }
+    } catch (error) {
+        window.pendingInviteContext = { error: 'Invite unavailable.' };
     }
 }
 
@@ -1238,17 +1265,25 @@ function renderRegister() {
                     </div>
                     <h2 class="text-3xl font-black text-white mb-2 uppercase tracking-tight">New Application</h2>
                     <p class="text-white/40 text-sm mb-10 font-bold uppercase tracking-[0.2em]">MajesticEquity Portal</p>
+                    ${window.pendingInviteContext && !window.pendingInviteContext.error ? `
+                        <div class="mb-8 p-4 rounded-2xl bg-secondary-fixed/10 border border-secondary-fixed/20 text-left">
+                            <div class="text-[10px] font-black uppercase tracking-widest text-secondary-fixed mb-2">Verified Agent Invitation</div>
+                            <div class="text-white font-bold">${window.pendingInviteContext.agent.name}</div>
+                            <div class="text-white/50 text-xs mt-1">${window.pendingInviteContext.agent.brokerageName} • ${window.pendingInviteContext.agent.licenseClass}</div>
+                        </div>
+                    ` : ''}
+                    ${window.pendingInviteContext?.error ? `<div class="mb-8 p-4 rounded-2xl bg-red-500/10 text-red-300 text-xs font-bold uppercase tracking-widest">${window.pendingInviteContext.error}</div>` : ''}
 
                     <div id="register-error" class="text-red-400 text-xs font-bold uppercase tracking-widest mb-4"></div>
 
                     <div class="space-y-6 text-left">
                         <div>
                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Full Name</label>
-                            <input id="register-name" type="text" placeholder="John Smith" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
+                            <input id="register-name" type="text" placeholder="John Smith" value="${window.pendingInviteContext?.borrowerName || ''}" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
                         </div>
                         <div>
                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Email Address</label>
-                            <input id="register-email" type="email" placeholder="your@email.com" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
+                            <input id="register-email" type="email" placeholder="your@email.com" value="${window.pendingInviteContext?.borrowerEmail || ''}" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
                         </div>
                         <div>
                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Phone Number</label>
@@ -1318,24 +1353,30 @@ function renderAgentSignup() {
                              <input id="agent-phone" type="tel" placeholder="(555) 000-0000" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
                         </div>
                         <div>
-                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">NMLS ID #</label>
-                             <input id="agent-nmls" type="text" placeholder="1234567" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
+                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">FSRA Licence #</label>
+                             <input id="agent-license-number" type="text" placeholder="M08001234" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
                         </div>
                         <div>
-                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">License State</label>
-                             <select id="agent-state" class="w-full bg-primary border border-white/10 rounded-2xl py-4 px-6 text-white focus:border-secondary-fixed/50 outline-none transition-all font-medium appearance-none">
-                                <option value="" disabled selected>Select State</option>
-                                <option value="CA">California</option>
-                                <option value="FL">Florida</option>
-                                <option value="TX">Texas</option>
-                                <option value="NY">New York</option>
-                                <option value="ON">Ontario (CA)</option>
-                                <option value="BC">British Columbia (CA)</option>
+                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Ontario Licence Class</label>
+                             <select id="agent-license-class" class="w-full bg-primary border border-white/10 rounded-2xl py-4 px-6 text-white focus:border-secondary-fixed/50 outline-none transition-all font-medium appearance-none">
+                                <option value="" disabled selected>Select Class</option>
+                                <option value="Mortgage Agent Level 1">Mortgage Agent Level 1</option>
+                                <option value="Mortgage Agent Level 2">Mortgage Agent Level 2</option>
+                                <option value="Mortgage Broker">Mortgage Broker</option>
+                                <option value="Principal Broker">Principal Broker</option>
                              </select>
                         </div>
                         <div class="md:col-span-2">
                              <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Brokerage Name</label>
                              <input id="agent-brokerage" type="text" placeholder="Majestic Equity Partners / Independent" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
+                        </div>
+                        <div class="md:col-span-2">
+                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Brokerage Licence #</label>
+                             <input id="agent-brokerage-license" type="text" placeholder="Required for automated match" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
+                        </div>
+                        <div class="md:col-span-2">
+                             <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">FSRA Registry Profile URL</label>
+                             <input id="agent-registry-url" type="url" placeholder="https://www2.fsco.gov.on.ca/..." class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white placeholder:text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium">
                         </div>
                         <div class="md:col-span-2">
                              <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Create Secure Password</label>
@@ -1363,15 +1404,22 @@ window.submitAgentRegister = async function() {
     const name = document.getElementById('agent-name').value;
     const email = document.getElementById('agent-email').value;
     const phone = document.getElementById('agent-phone').value;
-    const nmlsId = document.getElementById('agent-nmls').value;
+    const licenseNumber = document.getElementById('agent-license-number').value;
+    const licenseClass = document.getElementById('agent-license-class').value;
     const brokerageName = document.getElementById('agent-brokerage').value;
-    const licenseState = document.getElementById('agent-state').value;
+    const brokerageLicenseNumber = document.getElementById('agent-brokerage-license').value;
+    const registryProfileUrl = document.getElementById('agent-registry-url').value;
     const password = document.getElementById('agent-password').value;
     const errorEl = document.getElementById('agent-register-error');
     const btn = document.getElementById('agent-register-btn');
 
-    if (!name || !email || !phone || !password || !nmlsId || !brokerageName || !licenseState) {
-        errorEl.textContent = 'All professional fields are strictly required.';
+    if (!name || !email || !phone || !password || !licenseNumber || !licenseClass || !brokerageName || !brokerageLicenseNumber || !registryProfileUrl) {
+        errorEl.textContent = 'All identity, FSRA, brokerage, registry URL, and password fields are required.';
+        return;
+    }
+
+    if (!registryProfileUrl.startsWith('https://www.fsrao.ca/') && !registryProfileUrl.startsWith('https://www2.fsco.gov.on.ca/') && !registryProfileUrl.startsWith('https://mbsweblist.fsco.gov.on.ca/')) {
+        errorEl.textContent = 'Registry URL must be an official FSRA or FSCO HTTPS page.';
         return;
     }
 
@@ -1381,7 +1429,7 @@ window.submitAgentRegister = async function() {
         const res = await fetch('/api/auth/register-agent', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, email, phone, password, nmlsId, brokerageName, licenseState })
+            body: JSON.stringify({ name, email, phone, password, licenseNumber, licenseClass, brokerageName, brokerageLicenseNumber, registryProfileUrl })
         });
         const data = await res.json();
         
@@ -1999,6 +2047,17 @@ function renderAdminDashboard() {
                     <div class="p-6 rounded-[2rem] glass-card border-white/10 animate-pulse bg-white/5 h-32"></div>
                 </div>
 
+                <div class="glass-card rounded-[3rem] border-white/10 overflow-hidden mb-12">
+                    <div class="p-8 border-b border-white/10 bg-white/5 flex items-center justify-between gap-4">
+                        <div>
+                            <h3 class="text-xl font-black text-white uppercase tracking-wider">Agent Reviews</h3>
+                            <p class="text-white/30 text-xs font-bold uppercase tracking-widest mt-1">Automated official-registry checks only</p>
+                        </div>
+                        <button onclick="window.loadAdminAgents()" class="px-4 py-2 rounded-full bg-white/5 text-white/60 hover:text-white text-xs font-bold uppercase tracking-widest">Refresh</button>
+                    </div>
+                    <div id="admin-agent-reviews" class="p-8 space-y-4 text-white/50 text-sm">Loading agent reviews...</div>
+                </div>
+
                 <!-- Applications Table -->
                 <div class="glass-card rounded-[3rem] border-white/10 overflow-hidden mb-12">
                     <div class="p-8 border-b border-white/10 bg-white/5">
@@ -2109,6 +2168,7 @@ window.loadAdminData = async function() {
 
         const appsRes = await authFetch('/api/admin/applications');
         const { applications } = await appsRes.json();
+        window.loadAdminAgents();
         
         const tbody = document.getElementById('admin-applications-tbody');
         if (tbody) {
@@ -2145,6 +2205,63 @@ window.loadAdminData = async function() {
         }
     } catch (error) {
         console.error('Failed to load admin data:', error);
+    }
+}
+
+window.loadAdminAgents = async function() {
+    const container = document.getElementById('admin-agent-reviews');
+    if (!container) return;
+    try {
+        const res = await authFetch('/api/admin/agents');
+        const data = await res.json();
+        const agents = data.agents || [];
+        if (!agents.length) {
+            container.innerHTML = '<p class="text-white/40 italic">No agent applications yet.</p>';
+            return;
+        }
+        container.innerHTML = agents.map(profile => {
+            const user = profile.userId || {};
+            const auto = profile.automatedVerification || {};
+            return `
+                <div class="p-5 rounded-2xl bg-white/5 border border-white/10">
+                    <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
+                        <div>
+                            <div class="text-white font-black">${user.name || 'Agent'} <span class="text-white/30 font-medium">${user.email || ''}</span></div>
+                            <div class="text-white/40 text-xs mt-2">${profile.licenseClass} • FSRA ${profile.licenseNumber} • ${profile.brokerageName}</div>
+                            <div class="text-white/30 text-[10px] uppercase tracking-widest mt-2">Status: ${profile.verificationStatus.replace('_', ' ')}</div>
+                            <div class="text-white/30 text-[10px] uppercase tracking-widest mt-1">Automated Check: ${auto.status || 'unchecked'}</div>
+                            ${auto.failures?.length ? `<div class="text-red-300 text-xs mt-3 max-w-2xl">${auto.failures.join(' ')}</div>` : ''}
+                            ${profile.registryProfileUrl ? `<a href="${profile.registryProfileUrl}" target="_blank" class="inline-flex mt-3 text-secondary-fixed text-xs font-bold uppercase tracking-widest hover:text-white">Open FSRA Registry</a>` : ''}
+                        </div>
+                        <div class="flex flex-col sm:flex-row gap-2 min-w-fit">
+                            <input id="agent-registry-${profile._id}" value="${profile.registryProfileUrl || ''}" placeholder="Registry URL" class="bg-primary border border-white/10 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-secondary-fixed">
+                            <button onclick="window.updateAgentVerification('${profile._id}', 'retry')" class="px-4 py-2 rounded-xl bg-green-500/20 text-green-300 font-black uppercase tracking-widest text-[10px]">Retry Check</button>
+                            <button onclick="window.updateAgentVerification('${profile._id}', 'rejected')" class="px-4 py-2 rounded-xl bg-red-500/20 text-red-300 font-black uppercase tracking-widest text-[10px]">Reject</button>
+                            <button onclick="window.updateAgentVerification('${profile._id}', 'suspended')" class="px-4 py-2 rounded-xl bg-white/10 text-white/60 font-black uppercase tracking-widest text-[10px]">Suspend</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        container.innerHTML = '<p class="text-red-300 text-xs font-bold uppercase tracking-widest">Agent reviews failed to load.</p>';
+    }
+}
+
+window.updateAgentVerification = async function(profileId, status) {
+    const registryInput = document.getElementById('agent-registry-' + profileId);
+    const payload = { status, registryProfileUrl: registryInput ? registryInput.value : '' };
+    if (status === 'rejected') {
+        payload.rejectionReason = prompt('Reason for rejection?') || 'FSRA registry details could not be confirmed.';
+    }
+    try {
+        await authFetch('/api/admin/agents/' + profileId + '/verification', {
+            method: 'PATCH',
+            body: JSON.stringify(payload)
+        });
+        window.loadAdminAgents();
+    } catch (error) {
+        alert('Agent verification update failed.');
     }
 }
 
@@ -2966,6 +3083,38 @@ window.addResidencyRow = function() {
 
 function renderAgentDashboard() {
     const user = window.userStatus || {};
+    const profile = user.agentProfile || {};
+    if (profile.verificationStatus !== 'approved') {
+        const auto = profile.automatedVerification || {};
+        const statusLabel = profile.verificationStatus === 'rejected' ? 'Verification Failed' : profile.verificationStatus === 'suspended' ? 'Access Suspended' : 'Automated Verification Pending';
+        const statusCopy = profile.verificationStatus === 'rejected'
+            ? (profile.rejectionReason || 'Your FSRA details could not be approved yet. Please contact support with updated registry information.')
+            : profile.verificationStatus === 'suspended'
+                ? 'Your professional access is currently suspended. Borrower invites and client messaging are disabled.'
+                : 'Your email and phone are verified. Client access unlocks only after our system confirms your submitted details against an official FSRA or FSCO registry page.';
+        return `
+            <div class="min-h-screen bg-primary flex items-center justify-center p-6 relative overflow-hidden">
+                <div class="absolute inset-0 z-0" style="background: radial-gradient(ellipse 120% 80% at 70% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
+                    <svg id="portal-wave-svg" viewBox="0 0 1200 800" preserveAspectRatio="none" class="absolute inset-0 w-full h-full" style="opacity: 0.15;"></svg>
+                </div>
+                <div class="max-w-2xl w-full glass-card border-white/10 rounded-[3rem] p-10 text-center relative z-10">
+                    <div class="w-20 h-20 rounded-3xl bg-secondary-fixed/10 border border-secondary-fixed/20 flex items-center justify-center mx-auto mb-8">
+                        <span class="material-symbols-outlined text-secondary-fixed text-4xl">domain_verification</span>
+                    </div>
+                    <h1 class="text-4xl font-black text-white uppercase tracking-tight mb-4">${statusLabel}</h1>
+                    <p class="text-white/50 leading-relaxed mb-8">${statusCopy}</p>
+                    ${auto.failures?.length ? `<div class="mb-6 p-4 rounded-2xl bg-red-500/10 text-left text-red-300 text-xs leading-relaxed">${auto.failures.join(' ')}</div>` : ''}
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left bg-white/5 rounded-2xl p-6">
+                        <div><div class="text-white/30 text-[10px] font-black uppercase tracking-widest">FSRA Licence</div><div class="text-white font-bold">${profile.licenseNumber || 'Submitted'}</div></div>
+                        <div><div class="text-white/30 text-[10px] font-black uppercase tracking-widest">Class</div><div class="text-white font-bold">${profile.licenseClass || 'Ontario'}</div></div>
+                        <div class="md:col-span-2"><div class="text-white/30 text-[10px] font-black uppercase tracking-widest">Brokerage</div><div class="text-white font-bold">${profile.brokerageName || user.brokerageName || 'Submitted'}</div></div>
+                    </div>
+                    ${profile.verificationStatus !== 'suspended' ? `<button onclick="window.retryAgentVerification()" class="mt-8 mr-3 px-6 py-3 rounded-full bg-secondary-fixed text-primary hover:bg-white transition-all font-black uppercase tracking-widest text-xs">Retry Automated Check</button>` : ''}
+                    <button onclick="window.portalSignOut()" class="mt-8 px-6 py-3 rounded-full border border-white/20 text-white/60 hover:text-white transition-all font-bold text-sm">Sign Out</button>
+                </div>
+            </div>
+        `;
+    }
     return `
         <div class="min-h-screen bg-primary pb-24 relative overflow-hidden">
             <!-- Animated Wave Mesh Background -->
@@ -3001,9 +3150,9 @@ function renderAgentDashboard() {
                             <span class="material-symbols-outlined">group</span>
                             <span class="text-[10px] font-black uppercase tracking-widest">Active Pipeline</span>
                         </div>
-                        <div class="text-5xl font-black text-white mb-2 italic">0</div>
+                        <div class="text-5xl font-black text-white mb-2 italic" id="agent-pipeline-count">0</div>
                         <p class="text-white/40 text-xs font-bold uppercase tracking-widest mb-8">Loan Applications</p>
-                        <button disabled class="w-full py-4 rounded-2xl bg-white/5 border border-white/10 text-white/20 font-black uppercase tracking-widest text-[10px] cursor-not-allowed">View Pipeline (Coming Soon)</button>
+                        <button onclick="document.getElementById('agent-client-list')?.scrollIntoView({behavior:'smooth'})" class="w-full py-4 rounded-2xl bg-white/5 border border-white/10 text-white/60 hover:text-white font-black uppercase tracking-widest text-[10px]">View Pipeline</button>
                     </div>
 
                     <!-- Professional Credentials -->
@@ -3014,12 +3163,12 @@ function renderAgentDashboard() {
                         </div>
                         <div class="space-y-4">
                              <div class="flex justify-between items-center">
-                                <span class="text-white/30 text-[10px] font-black uppercase tracking-widest">NMLS ID</span>
-                                <span class="text-white font-bold">${user.nmlsId || 'Pending'}</span>
+                                <span class="text-white/30 text-[10px] font-black uppercase tracking-widest">FSRA Licence</span>
+                                <span class="text-white font-bold">${profile.licenseNumber || user.nmlsId || 'Pending'}</span>
                              </div>
                              <div class="flex justify-between items-center">
                                 <span class="text-white/30 text-[10px] font-black uppercase tracking-widest">License</span>
-                                <span class="text-white font-bold">${user.licenseState || 'Pending'} State</span>
+                                <span class="text-white font-bold">${profile.licenseClass || 'Ontario'}</span>
                              </div>
                              <div class="flex justify-between items-center">
                                 <span class="text-white/30 text-[10px] font-black uppercase tracking-widest">Status</span>
@@ -3029,29 +3178,142 @@ function renderAgentDashboard() {
                         <button onclick="window.showSecurity()" class="w-full py-4 rounded-2xl bg-secondary-fixed text-primary font-black uppercase tracking-widest text-[10px] mt-8 hover:bg-white transition-all">Account Security</button>
                     </div>
 
-                    <!-- Resource Center -->
+                    <!-- Invite Center -->
                     <div class="glass-card p-10 rounded-[3rem] border-white/10 reveal reveal-up" style="transition-delay: 200ms">
                         <div class="flex items-center gap-4 mb-8 text-secondary-fixed">
-                            <span class="material-symbols-outlined">menu_book</span>
-                            <span class="text-[10px] font-black uppercase tracking-widest">Agent Resources</span>
+                            <span class="material-symbols-outlined">person_add</span>
+                            <span class="text-[10px] font-black uppercase tracking-widest">Invite Borrower</span>
                         </div>
-                        <ul class="space-y-4 mb-8">
-                            <li><a href="#" class="text-white/60 hover:text-white text-sm font-medium transition-colors">Marketing Toolkits</a></li>
-                            <li><a href="#" class="text-white/60 hover:text-white text-sm font-medium transition-colors">Compliance Guidelines</a></li>
-                            <li><a href="#" class="text-white/60 hover:text-white text-sm font-medium transition-colors">Lending Guidelines</a></li>
-                        </ul>
+                        <form onsubmit="window.createAgentInvite(event)" class="space-y-4">
+                            <input id="agent-invite-name" type="text" placeholder="Borrower name" class="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 text-white placeholder:text-white/20 outline-none focus:border-secondary-fixed">
+                            <input id="agent-invite-email" type="email" placeholder="borrower@email.com" class="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 text-white placeholder:text-white/20 outline-none focus:border-secondary-fixed">
+                            <button id="agent-invite-btn" class="w-full py-4 rounded-2xl bg-secondary-fixed text-primary font-black uppercase tracking-widest text-[10px] hover:bg-white transition-all">Create Invite</button>
+                        </form>
                     </div>
                 </div>
 
-                <!-- Coming Soon Teaser -->
-                <div class="mt-16 p-16 rounded-[4rem] border-2 border-dashed border-white/5 flex flex-col items-center text-center reveal reveal-up">
-                    <div class="w-24 h-24 rounded-[2rem] bg-white/5 flex items-center justify-center text-white/10 mb-8">
-                        <span class="material-symbols-outlined text-5xl">rocket_launch</span>
+                <div class="mt-16 grid grid-cols-1 lg:grid-cols-2 gap-8 reveal reveal-up">
+                    <div class="glass-card rounded-[3rem] border-white/10 p-8">
+                        <h3 class="text-xl font-black text-white uppercase tracking-wider mb-6">Invite Status</h3>
+                        <div id="agent-invite-list" class="space-y-3 text-white/50 text-sm">Loading invites...</div>
                     </div>
-                    <h3 class="text-2xl font-black text-white/20 uppercase tracking-widest mb-4">Pipeline Management is Coming</h3>
-                    <p class="text-white/10 font-bold uppercase tracking-widest text-xs max-w-md">Our team is engineering a high-velocity dashboard for you to invite borrowers, track appraisals, and close deals in record time.</p>
+                    <div class="glass-card rounded-[3rem] border-white/10 p-8">
+                        <h3 class="text-xl font-black text-white uppercase tracking-wider mb-6">Assigned Clients</h3>
+                        <div id="agent-client-list" class="space-y-3 text-white/50 text-sm">Loading clients...</div>
+                    </div>
                 </div>
             </div>
         </div>
     `;
+}
+
+window.retryAgentVerification = async function() {
+    try {
+        const res = await authFetch('/api/agent/verification/retry', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Verification retry failed.');
+        await window.checkUserStatus();
+        window.showPortalDashboard();
+    } catch (error) {
+        alert(error.message || 'Verification retry failed.');
+    }
+}
+
+window.loadAgentData = async function() {
+    if (!window.userStatus || window.userStatus.role !== 'agent' || window.userStatus.agentProfile?.verificationStatus !== 'approved') return;
+    try {
+        const [appsRes, invitesRes] = await Promise.all([
+            authFetch('/api/agent/applications'),
+            authFetch('/api/agent/invites')
+        ]);
+        const appsData = await appsRes.json();
+        const invitesData = await invitesRes.json();
+        const applications = appsData.applications || [];
+        const invites = invitesData.invites || [];
+
+        const count = document.getElementById('agent-pipeline-count');
+        if (count) count.textContent = applications.length;
+
+        const inviteList = document.getElementById('agent-invite-list');
+        if (inviteList) {
+            inviteList.innerHTML = invites.length ? invites.map(invite => `
+                <div class="p-4 rounded-2xl bg-white/5 border border-white/10">
+                    <div class="flex justify-between gap-4">
+                        <div>
+                            <div class="text-white font-bold">${invite.borrowerName || invite.borrowerEmail || 'Open invite'}</div>
+                            <div class="text-white/40 text-[10px] uppercase tracking-widest mt-1">${invite.borrowerEmail || 'No email'} • Expires ${new Date(invite.expiresAt).toLocaleDateString()}</div>
+                        </div>
+                        <span class="text-[10px] font-black uppercase tracking-widest ${invite.status === 'used' ? 'text-green-400' : 'text-secondary-fixed'}">${invite.status}</span>
+                    </div>
+                </div>
+            `).join('') : '<p class="text-white/40 italic">No invites created yet.</p>';
+        }
+
+        const clientList = document.getElementById('agent-client-list');
+        if (clientList) {
+            clientList.innerHTML = applications.length ? applications.map(app => `
+                <button onclick="window.openAgentClient('${app._id}', '${(app.userName || app.userEmail).replace(/'/g, "\\'")}')" class="w-full text-left p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
+                    <div class="flex justify-between gap-4">
+                        <div>
+                            <div class="text-white font-bold">${app.userName || app.userEmail}</div>
+                            <div class="text-white/40 text-[10px] uppercase tracking-widest mt-1">${app.loanType} • $${(app.loanAmount || 0).toLocaleString()}</div>
+                        </div>
+                        <span class="text-[10px] font-black uppercase tracking-widest text-secondary-fixed">${app.status}</span>
+                    </div>
+                </button>
+            `).join('') : '<p class="text-white/40 italic">No assigned borrowers yet. Create an invite to begin.</p>';
+        }
+    } catch (error) {
+        console.error('Failed to load agent data:', error);
+    }
+}
+
+window.createAgentInvite = async function(event) {
+    event.preventDefault();
+    const nameInput = document.getElementById('agent-invite-name');
+    const emailInput = document.getElementById('agent-invite-email');
+    const btn = document.getElementById('agent-invite-btn');
+    const original = btn.innerHTML;
+    btn.innerHTML = 'Creating...';
+    btn.disabled = true;
+    try {
+        const res = await authFetch('/api/agent/invites', {
+            method: 'POST',
+            body: JSON.stringify({
+                borrowerName: nameInput.value,
+                borrowerEmail: emailInput.value
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Invite failed');
+        nameInput.value = '';
+        emailInput.value = '';
+        await navigator.clipboard?.writeText(data.invite.inviteUrl).catch(() => {});
+        alert('Invite created. Link copied when browser permissions allow:\n' + data.invite.inviteUrl);
+        window.loadAgentData();
+    } catch (error) {
+        alert(error.message || 'Invite failed');
+    } finally {
+        btn.innerHTML = original;
+        btn.disabled = false;
+    }
+}
+
+window.openAgentClient = async function(appId, name) {
+    const clientList = document.getElementById('agent-client-list');
+    if (!clientList) return;
+    clientList.innerHTML = `
+        <div class="p-4 rounded-2xl bg-white/5 border border-white/10">
+            <div class="flex items-center justify-between mb-4">
+                <h4 class="text-white font-black uppercase tracking-widest">${name}</h4>
+                <button onclick="window.loadAgentData()" class="text-white/40 hover:text-white text-xs font-bold uppercase tracking-widest">Back</button>
+            </div>
+            <div id="chat-messages" class="h-64 overflow-y-auto mb-4 p-4 rounded-2xl bg-primary/60 border border-white/10 space-y-4"></div>
+            <form onsubmit="window.sendMessage(event, '${appId}')" class="flex gap-3">
+                <input id="chat-input" class="flex-1 bg-white/5 border border-white/20 rounded-full text-white px-5 py-3 outline-none focus:border-secondary-fixed" placeholder="Message borrower..." required>
+                <button class="w-12 h-12 rounded-full bg-secondary-fixed text-primary flex items-center justify-center"><span class="material-symbols-outlined">send</span></button>
+            </form>
+        </div>
+    `;
+    window.loadMessages(appId);
 }

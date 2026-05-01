@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const MessageSchema = new mongoose.Schema({
     sender: { type: String, required: true }, // email of sender
     senderName: { type: String, default: '' },
-    senderRole: { type: String, enum: ['borrower', 'admin'], default: 'borrower' },
+    senderRole: { type: String, enum: ['borrower', 'admin', 'agent'], default: 'borrower' },
     message: { type: String, required: true },
     isRead: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now }
@@ -114,6 +114,7 @@ const ApplicationSchema = new mongoose.Schema({
     messages: [MessageSchema],
 
     // Admin
+    assignedAgentId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     assignedBroker: { type: String, default: '' },
     adminNotes: { type: String, default: '' },
 
