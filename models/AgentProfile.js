@@ -21,11 +21,23 @@ const AgentProfileSchema = new mongoose.Schema({
     brokerageName: { type: String, required: true, trim: true },
     brokerageLicenseNumber: { type: String, default: '', trim: true },
     registryProfileUrl: { type: String, default: '', trim: true },
+    // Layer 1: Persona Identity Verification (Gov ID + Selfie Liveness)
+    identityVerification: {
+        status: {
+            type: String,
+            enum: ['not_started', 'pending', 'completed', 'failed'],
+            default: 'not_started'
+        },
+        personaInquiryId: { type: String, default: '' },
+        verifiedName: { type: String, default: '' },
+        completedAt: { type: Date }
+    },
     verificationStatus: {
         type: String,
-        enum: ['pending_review', 'approved', 'rejected', 'suspended'],
-        default: 'pending_review'
+        enum: ['pending_identity', 'pending_registry', 'pending_admin', 'approved', 'rejected', 'suspended'],
+        default: 'pending_identity'
     },
+    // Layer 2: Automated FSRA Registry Check
     automatedVerification: {
         status: {
             type: String,

@@ -398,7 +398,7 @@ async function runAutomatedAgentVerification(profile, user) {
     profile.verifiedAt = verification.status === 'passed' ? verification.checkedAt : undefined;
     profile.verifiedBy = undefined;
     profile.rejectionReason = verification.failures.join(' ');
-    profile.verificationStatus = verification.status === 'passed' ? 'approved' : 'pending_review';
+    profile.verificationStatus = verification.status === 'passed' ? 'pending_admin' : 'pending_registry';
     await profile.save();
     return verification;
 }
@@ -1830,6 +1830,152 @@ app.get('/api/agent/invites', authenticateToken, requireApprovedAgent, async (re
     }
 });
 
+// =============================================
+// AGENT IDENTITY VERIFICATION (3-LAYER SYSTEM)
+// Layer 1: Persona (Gov ID + Selfie Liveness)
+// Layer 2: Automated FSRA Registry Check
+// Layer 3: Admin Final Approval
+// =============================================
+
+// Layer 1: Start Persona inquiry for agent
+app.post('/api/agent/verify-identity', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.userId);
+        if (!user || user.role !== 'agent') {
+            return res.status(403).json({ error: 'Agent account required.' });
+        }
+
+        const profile = await AgentProfile.findOne({ userId: user._id });
+        if (!profile) return res.status(404).json({ error: 'Agent profile not found.' });
+        if (profile.verificationStatus === 'suspended') {
+            return res.status(403).json({ error: 'Suspended agents cannot verify.' });
+        }
+        if (profile.identityVerification?.status === 'completed') {
+            return res.status(400).json({ error: 'Identity already verified. Proceed to registry check.' });
+        }
+
+        const templateId = process.env.PERSONA_TEMPLATE_ID;
+        if (!templateId) {
+            return res.status(500).json({ error: 'Persona Template ID not configured.' });
+        }
+
+        // Mark identity verification as pending
+        profile.identityVerification = {
+            ...profile.identityVerification,
+            status: 'pending'
+        };
+        profile.verificationStatus = 'pending_identity';
+        await profile.save();
+
+        console.log(`🚀 Agent Persona Inquiry initiated for: ${user.email}`);
+        res.json({
+            templateId: templateId,
+            referenceId: `agent_${user.email}`
+        });
+    } catch (error) {
+        console.error('❌ Agent Identity Start Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Layer 1 Completion: Server-to-server Persona validation for agent
+app.post('/api/agent/persona-complete', authenticateToken, async (req, res) => {
+    try {
+        const { inquiryId } = req.body;
+        const user = await User.findById(req.userId);
+        if (!user || user.role !== 'agent') {
+            return res.status(403).json({ error: 'Agent account required.' });
+        }
+
+        const profile = await AgentProfile.findOne({ userId: user._id });
+        if (!profile) return res.status(404).json({ error: 'Agent profile not found.' });
+
+        // 🛡️ Secure Server-to-Server Validation (NEVER trust the client)
+        console.log(`👤 Agent Persona server-check for: ${inquiryId}`);
+        const response = await fetch(`https://withpersona.com/api/v1/inquiries/${inquiryId}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${process.env.PERSONA_API_KEY}`,
+                'Accept': 'application/json',
+                'Persona-Version': '2023-01-05'
+            }
+        });
+
+        if (!response.ok) {
+            console.error(`❌ Agent Persona Verification Failed: HTTP ${response.status}`);
+            throw new Error('Failed to validate identity via Persona servers.');
+        }
+
+        const data = await response.json();
+        const realStatus = data.data.attributes.status;
+        const personaName = data.data.attributes?.name?.full || '';
+
+        console.log(`🛡️ Agent Persona Result — Status: ${realStatus}, Name: ${personaName}`);
+
+        if (realStatus === 'completed' || realStatus === 'approved') {
+            profile.identityVerification = {
+                status: 'completed',
+                personaInquiryId: inquiryId,
+                verifiedName: personaName,
+                completedAt: new Date()
+            };
+
+            // AUTO-CHAIN → Layer 2: Run FSRA Registry Check immediately
+            console.log(`⚡ Auto-chaining to Layer 2 (FSRA Registry) for: ${user.email}`);
+            profile.verificationStatus = 'pending_registry';
+            await profile.save();
+
+            try {
+                const verification = await runAutomatedAgentVerification(profile, user);
+                if (verification.status === 'passed') {
+                    profile.verificationStatus = 'pending_admin';
+                    await profile.save();
+                    console.log(`✅ Agent ${user.email} passed all automated checks. Awaiting admin approval.`);
+                } else {
+                    profile.verificationStatus = 'pending_registry';
+                    await profile.save();
+                    console.log(`⚠️ Agent ${user.email} failed FSRA registry check.`);
+                }
+            } catch (regErr) {
+                console.error('⚠️ FSRA registry check failed (non-blocking):', regErr.message);
+                profile.verificationStatus = 'pending_registry';
+                await profile.save();
+            }
+
+            req.app.get('io').emit('status_update', { updateType: 'agent_verification', agentId: user._id });
+
+            res.json({
+                success: true,
+                identityStatus: 'completed',
+                verifiedName: personaName,
+                verificationStatus: profile.verificationStatus,
+                agentProfile: profile
+            });
+        } else {
+            // Persona failed or needs retry
+            profile.identityVerification = {
+                status: 'failed',
+                personaInquiryId: inquiryId,
+                verifiedName: '',
+                completedAt: new Date()
+            };
+            profile.verificationStatus = 'pending_identity';
+            await profile.save();
+
+            res.json({
+                success: false,
+                identityStatus: realStatus,
+                verificationStatus: 'pending_identity',
+                agentProfile: profile
+            });
+        }
+    } catch (error) {
+        console.error('❌ Agent Persona Completion Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Layer 2 Retry: Re-run FSRA registry check
 app.post('/api/agent/verification/retry', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.userId);
@@ -1843,9 +1989,47 @@ app.post('/api/agent/verification/retry', authenticateToken, async (req, res) =>
             return res.status(403).json({ error: 'Suspended agents cannot retry verification.' });
         }
 
+        // Ensure Layer 1 (Persona) is already completed before allowing registry retry
+        if (profile.identityVerification?.status !== 'completed') {
+            return res.status(400).json({ error: 'You must complete identity verification (Persona) first.' });
+        }
+
         const verification = await runAutomatedAgentVerification(profile, user);
+        if (verification.status === 'passed') {
+            profile.verificationStatus = 'pending_admin';
+            await profile.save();
+        }
         req.app.get('io').emit('status_update', { updateType: 'agent_verification', agentId: profile.userId });
         res.json({ success: true, agentProfile: profile, verification });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Layer 3: Admin approval/rejection of agent
+app.patch('/api/admin/agents/:profileId', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { status, reviewNotes, rejectionReason } = req.body;
+        const profile = await AgentProfile.findById(req.params.profileId);
+        if (!profile) return res.status(404).json({ error: 'Agent profile not found.' });
+
+        const validStatuses = ['approved', 'rejected', 'suspended'];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ error: `Status must be one of: ${validStatuses.join(', ')}` });
+        }
+
+        profile.verificationStatus = status;
+        if (status === 'approved') {
+            profile.verifiedAt = new Date();
+            profile.verifiedBy = req.userId;
+        }
+        if (rejectionReason) profile.rejectionReason = rejectionReason;
+        if (reviewNotes) profile.reviewNotes = reviewNotes;
+        await profile.save();
+
+        req.app.get('io').emit('status_update', { updateType: 'agent_verification', agentId: profile.userId });
+        console.log(`🛡️ Admin ${req.userEmail} set agent ${profile.userId} to: ${status}`);
+        res.json({ success: true, agentProfile: profile });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

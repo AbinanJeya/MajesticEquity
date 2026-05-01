@@ -3086,31 +3086,72 @@ function renderAgentDashboard() {
     const profile = user.agentProfile || {};
     if (profile.verificationStatus !== 'approved') {
         const auto = profile.automatedVerification || {};
-        const statusLabel = profile.verificationStatus === 'rejected' ? 'Verification Failed' : profile.verificationStatus === 'suspended' ? 'Access Suspended' : 'Automated Verification Pending';
-        const statusCopy = profile.verificationStatus === 'rejected'
-            ? (profile.rejectionReason || 'Your FSRA details could not be approved yet. Please contact support with updated registry information.')
-            : profile.verificationStatus === 'suspended'
-                ? 'Your professional access is currently suspended. Borrower invites and client messaging are disabled.'
-                : 'Your email and phone are verified. Client access unlocks only after our system confirms your submitted details against an official FSRA or FSCO registry page.';
+        const identity = profile.identityVerification || {};
+        const layer1Done = identity.status === 'completed';
+        const layer2Done = auto.status === 'passed';
+        const layer3Pending = profile.verificationStatus === 'pending_admin';
+        const isRejected = profile.verificationStatus === 'rejected';
+        const isSuspended = profile.verificationStatus === 'suspended';
+        const statusLabel = isSuspended ? 'Access Suspended' : isRejected ? 'Verification Failed' : layer3Pending ? 'Awaiting Admin Approval' : layer2Done ? 'Registry Verified' : layer1Done ? 'Identity Verified' : 'Agent Verification Required';
+        const statusCopy = isSuspended ? 'Your professional access is currently suspended. Borrower invites and client messaging are disabled.' : isRejected ? (profile.rejectionReason || 'Your details could not be verified. Please contact support.') : layer3Pending ? 'Your identity and license have been verified automatically. An administrator will review and approve your account shortly.' : layer1Done ? 'Your government ID and selfie have been verified. We are now checking your FSRA registry details.' : 'To prevent impersonation, all agents must complete a 3-step verification process.';
         return `
             <div class="min-h-screen bg-primary flex items-center justify-center p-6 relative overflow-hidden">
                 <div class="absolute inset-0 z-0" style="background: radial-gradient(ellipse 120% 80% at 70% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
                     <svg id="portal-wave-svg" viewBox="0 0 1200 800" preserveAspectRatio="none" class="absolute inset-0 w-full h-full" style="opacity: 0.15;"></svg>
                 </div>
-                <div class="max-w-2xl w-full glass-card border-white/10 rounded-[3rem] p-10 text-center relative z-10">
+                <div class="max-w-2xl w-full glass-card border-white/10 rounded-[3rem] p-10 relative z-10">
                     <div class="w-20 h-20 rounded-3xl bg-secondary-fixed/10 border border-secondary-fixed/20 flex items-center justify-center mx-auto mb-8">
-                        <span class="material-symbols-outlined text-secondary-fixed text-4xl">domain_verification</span>
+                        <span class="material-symbols-outlined text-secondary-fixed text-4xl">shield_person</span>
                     </div>
-                    <h1 class="text-4xl font-black text-white uppercase tracking-tight mb-4">${statusLabel}</h1>
-                    <p class="text-white/50 leading-relaxed mb-8">${statusCopy}</p>
-                    ${auto.failures?.length ? `<div class="mb-6 p-4 rounded-2xl bg-red-500/10 text-left text-red-300 text-xs leading-relaxed">${auto.failures.join(' ')}</div>` : ''}
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left bg-white/5 rounded-2xl p-6">
+                    <h1 class="text-3xl md:text-4xl font-black text-white uppercase tracking-tight mb-4 text-center">${statusLabel}</h1>
+                    <p class="text-white/50 leading-relaxed mb-10 text-center">${statusCopy}</p>
+                    <div class="space-y-4 mb-10">
+                        <div class="p-5 rounded-2xl ${layer1Done ? 'bg-green-500/10 border border-green-500/30' : 'bg-white/5 border border-white/10'} transition-all">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 rounded-2xl ${layer1Done ? 'bg-green-500/20 text-green-400' : 'bg-secondary-fixed/10 text-secondary-fixed'} flex items-center justify-center flex-shrink-0">
+                                    <span class="material-symbols-outlined text-2xl">${layer1Done ? 'check_circle' : 'fingerprint'}</span>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-[10px] font-black uppercase tracking-widest ${layer1Done ? 'text-green-400' : 'text-white/30'}">Layer 1 — Identity Verification</div>
+                                    <div class="text-white font-bold text-sm mt-1">${layer1Done ? 'Verified as: ' + (identity.verifiedName || user.name) : 'Government ID scan + live selfie liveness check'}</div>
+                                </div>
+                                ${!layer1Done && !isSuspended ? '<button onclick="window.startAgentPersona()" id="agent-persona-btn" class="px-5 py-3 rounded-xl bg-secondary-fixed text-primary font-black uppercase tracking-widest text-[10px] hover:bg-white transition-all flex-shrink-0">' + (identity.status === 'failed' ? 'Retry' : 'Verify Now') + '</button>' : ''}
+                            </div>
+                            ${identity.status === 'failed' ? '<div class="mt-3 text-red-400 text-xs">Identity verification failed. Please try again with a valid government ID.</div>' : ''}
+                        </div>
+                        <div class="p-5 rounded-2xl ${layer2Done ? 'bg-green-500/10 border border-green-500/30' : layer1Done ? 'bg-white/5 border border-white/10' : 'bg-white/[0.02] border border-white/5 opacity-40'} transition-all">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 rounded-2xl ${layer2Done ? 'bg-green-500/20 text-green-400' : layer1Done ? 'bg-secondary-fixed/10 text-secondary-fixed' : 'bg-white/5 text-white/20'} flex items-center justify-center flex-shrink-0">
+                                    <span class="material-symbols-outlined text-2xl">${layer2Done ? 'check_circle' : 'domain_verification'}</span>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-[10px] font-black uppercase tracking-widest ${layer2Done ? 'text-green-400' : 'text-white/30'}">Layer 2 — FSRA License Registry</div>
+                                    <div class="text-white font-bold text-sm mt-1">${layer2Done ? 'License confirmed against official FSRA database' : 'Automated cross-reference against the Ontario registry'}</div>
+                                </div>
+                                ${layer1Done && !layer2Done && !isSuspended ? '<button onclick="window.retryAgentVerification()" class="px-5 py-3 rounded-xl bg-white/10 text-white font-black uppercase tracking-widest text-[10px] hover:bg-white/20 transition-all flex-shrink-0">Retry Check</button>' : ''}
+                            </div>
+                            ${auto.failures?.length && layer1Done ? '<div class="mt-3 p-3 rounded-xl bg-red-500/10 text-red-300 text-xs leading-relaxed">' + auto.failures.join(' ') + '</div>' : ''}
+                        </div>
+                        <div class="p-5 rounded-2xl ${profile.verificationStatus === 'approved' ? 'bg-green-500/10 border border-green-500/30' : layer3Pending ? 'bg-secondary-fixed/10 border border-secondary-fixed/30' : 'bg-white/[0.02] border border-white/5 opacity-40'} transition-all">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 rounded-2xl ${profile.verificationStatus === 'approved' ? 'bg-green-500/20 text-green-400' : layer3Pending ? 'bg-secondary-fixed/10 text-secondary-fixed' : 'bg-white/5 text-white/20'} flex items-center justify-center flex-shrink-0">
+                                    <span class="material-symbols-outlined text-2xl">${profile.verificationStatus === 'approved' ? 'check_circle' : layer3Pending ? 'hourglass_top' : 'admin_panel_settings'}</span>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-[10px] font-black uppercase tracking-widest ${layer3Pending ? 'text-secondary-fixed' : 'text-white/30'}">Layer 3 — Admin Review</div>
+                                    <div class="text-white font-bold text-sm mt-1">${layer3Pending ? 'Your profile is queued for manual admin review' : 'A MajesticEquity administrator will finalize your approval'}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left bg-white/5 rounded-2xl p-6 mb-8">
                         <div><div class="text-white/30 text-[10px] font-black uppercase tracking-widest">FSRA Licence</div><div class="text-white font-bold">${profile.licenseNumber || 'Submitted'}</div></div>
                         <div><div class="text-white/30 text-[10px] font-black uppercase tracking-widest">Class</div><div class="text-white font-bold">${profile.licenseClass || 'Ontario'}</div></div>
                         <div class="md:col-span-2"><div class="text-white/30 text-[10px] font-black uppercase tracking-widest">Brokerage</div><div class="text-white font-bold">${profile.brokerageName || user.brokerageName || 'Submitted'}</div></div>
                     </div>
-                    ${profile.verificationStatus !== 'suspended' ? `<button onclick="window.retryAgentVerification()" class="mt-8 mr-3 px-6 py-3 rounded-full bg-secondary-fixed text-primary hover:bg-white transition-all font-black uppercase tracking-widest text-xs">Retry Automated Check</button>` : ''}
-                    <button onclick="window.portalSignOut()" class="mt-8 px-6 py-3 rounded-full border border-white/20 text-white/60 hover:text-white transition-all font-bold text-sm">Sign Out</button>
+                    <div class="flex justify-center gap-4">
+                        <button onclick="window.portalSignOut()" class="px-6 py-3 rounded-full border border-white/20 text-white/60 hover:text-white transition-all font-bold text-sm">Sign Out</button>
+                    </div>
                 </div>
             </div>
         `;
@@ -3216,6 +3257,71 @@ window.retryAgentVerification = async function() {
         window.showPortalDashboard();
     } catch (error) {
         alert(error.message || 'Verification retry failed.');
+    }
+}
+
+window.startAgentPersona = async function() {
+    console.log('🚀 Initializing Agent Persona Verification (Layer 1)...');
+    const btn = document.getElementById('agent-persona-btn');
+    if (btn) btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm mr-1">progress_activity</span>Loading...';
+
+    try {
+        const response = await authFetch('/api/agent/verify-identity', { method: 'POST' });
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || 'Server rejected identity request');
+        }
+
+        const { templateId, referenceId } = await response.json();
+        if (!templateId) throw new Error('Persona Template ID is missing');
+
+        if (typeof Persona === 'undefined') {
+            if (btn) btn.innerHTML = 'Adblocker Detected';
+            console.error('Persona SDK blocked by adblocker.');
+            return;
+        }
+
+        const client = new Persona.Client({
+            templateId: templateId,
+            referenceId: referenceId,
+            environment: "sandbox",
+            onReady: () => {
+                window.trackEvent('Verification', 'Agent Persona Started');
+                client.open();
+            },
+            onComplete: async ({ inquiryId }) => {
+                window.trackEvent('Verification', 'Agent Persona Completed');
+                console.log('✅ Agent Persona Verified:', inquiryId);
+
+                // Notify backend (server-to-server validation + auto-chain to FSRA)
+                const completeRes = await authFetch('/api/agent/persona-complete', {
+                    method: 'POST',
+                    body: JSON.stringify({ inquiryId })
+                });
+                const completeData = await completeRes.json();
+
+                if (completeData.success) {
+                    await window.checkUserStatus();
+                    window.showPortalDashboard();
+                } else {
+                    alert('Identity verification could not be confirmed. Please try again.');
+                    await window.checkUserStatus();
+                    window.showPortalDashboard();
+                }
+            },
+            onCancel: () => {
+                console.log('❌ Agent Persona Cancelled.');
+                if (btn) btn.innerHTML = 'Verify Now';
+            },
+            onError: (error) => {
+                console.error('Persona SDK Error:', error);
+                if (btn) btn.innerHTML = 'Error — Retry';
+            }
+        });
+    } catch (error) {
+        console.error('❌ Failed to start Agent Persona:', error);
+        if (btn) btn.innerHTML = error.message || 'Error';
+        setTimeout(() => { if (btn) btn.innerHTML = 'Verify Now'; }, 3000);
     }
 }
 
