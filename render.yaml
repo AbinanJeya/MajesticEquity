@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: borrower-portal
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      # Database
+      - key: MONGODB_URI
+        sync: false
+      # Authentication
+      - key: JWT_SECRET
+        sync: false
+      # Plaid Integration
+      - key: PLAID_CLIENT_ID
+        sync: false
+      - key: PLAID_SECRET
+        sync: false
+      - key: PLAID_ENV
+        value: sandbox
+      # Payments
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # Identity
+      - key: PERSONA_API_KEY
+        sync: false
+      # Notifications (Twilio / SendGrid)
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: SMTP_PASS
+        sync: false
