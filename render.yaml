@@ -31,6 +31,8 @@ services:
       # Identity
       - key: PERSONA_API_KEY
         sync: false
+      - key: PERSONA_TEMPLATE_ID
+        sync: false
       # Notifications (Twilio / SendGrid)
       - key: TWILIO_ACCOUNT_SID
         sync: false
