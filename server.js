@@ -4,21 +4,29 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
 const { Server } = require("socket.io");
 const PDFDocument = require('pdfkit');
 const { Configuration, PlaidApi, PlaidEnvironments } = require('plaid');
-const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
-const twilio = require('twilio');
+const xss = require('xss');
+
+// =============================================
+// PRODUCTION MODULES (Fixes #1-#8)
+// =============================================
+const { logger, Sentry } = require('./services/logger');
+const { validateEnvironment } = require('./services/envValidator');
+const { connectDatabase } = require('./services/database');
+const { sendEmail, sendSMS } = require('./services/notifications');
+const { upload, getFileUrl, deleteFile, getStorageKey, isS3Configured } = require('./services/fileUpload');
+const { authenticateToken, requireAdmin, buildAccessUser, requireApprovedAgent, errorHandler, JWT_SECRET } = require('./middlewares/auth');
+const { validate, registerSchema, loginSchema, agentRegisterSchema, mfaVerifySchema, verifyRegistrationSchema, applicationSubmitSchema, creditPullSchema, messageSchema, agentInviteSchema, adminAgentStatusSchema } = require('./middlewares/validation');
 
 // Models
 const PlaidItem = require('./models/PlaidItem');
@@ -27,34 +35,20 @@ const Document = require('./models/Document');
 const Application = require('./models/Application');
 const AgentProfile = require('./models/AgentProfile');
 const AgentInvite = require('./models/AgentInvite');
-const {
-    canAccessApplication,
-    canAgentInviteBorrower,
-    canMessageApplication,
-    hashInviteToken,
-    isInviteUsable
-} = require('./utils/agentNetwork');
-const {
-    isOfficialRegistryUrl,
-    verifyAgentAgainstOfficialRegistry
-} = require('./utils/agentVerification');
+const { canAccessApplication, canAgentInviteBorrower, canMessageApplication, hashInviteToken, isInviteUsable } = require('./utils/agentNetwork');
+const { isOfficialRegistryUrl, verifyAgentAgainstOfficialRegistry } = require('./utils/agentVerification');
 
 // =============================================
-// DATABASE CONNECTION
+// STARTUP VALIDATION & DATABASE (Fixes #4, #7)
 // =============================================
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/majesticequity';
-mongoose.connect(MONGODB_URI)
-    .then(() => console.log('✅ Connected to MongoDB'))
-    .catch((err) => console.error('❌ MongoDB Connection Error:', err));
-
-const DEV_USER_ID = '507f1f77bcf86cd799439011';
-const JWT_SECRET = process.env.JWT_SECRET || 'majesticequity_dev_secret_2026';
+validateEnvironment();
+connectDatabase();
 
 // =============================================
 // EXPRESS APP + SECURITY
 // =============================================
 const { generateFNM } = require('./utils/fnmExporter');
-const stripe = require('stripe')((process.env.STRIPE_SECRET_KEY || 'sk_test_local_placeholder').trim());
+const stripe = require('stripe')((process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder_dev_only').trim());
 
 const app = express();
 const server = http.createServer(app);
@@ -130,35 +124,10 @@ app.use(bodyParser.json());
 app.use('/api/', apiLimiter);
 app.use(express.static('./'));
 
-// =============================================
-// FILE UPLOAD CONFIG (Multer)
-// =============================================
+// Fix #1: File uploads now use S3 in production (via services/fileUpload.js)
+// Local fallback still serves files for dev mode
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
-
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, uploadsDir),
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
-const upload = multer({
-    storage,
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
-    fileFilter: (req, file, cb) => {
-        const allowed = ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx'];
-        const ext = path.extname(file.originalname).toLowerCase();
-        if (allowed.includes(ext)) {
-            cb(null, true);
-        } else {
-            cb(new Error('File type not allowed. Use PDF, JPG, PNG, DOC, or DOCX.'));
-        }
-    }
-});
-
-// Serve uploaded files
 app.use('/uploads', express.static(uploadsDir));
 
 // =============================================
@@ -180,69 +149,11 @@ const configuration = new Configuration({
 const client = new PlaidApi(configuration);
 
 // =============================================
-// EMAIL CONFIG
+// EMAIL, SMS, AUTH: Now imported from services/ and middlewares/ (Fixes #3, #5)
 // =============================================
-let emailTransporter = null;
-if (process.env.SMTP_HOST && process.env.SMTP_USER) {
-    emailTransporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: false,
-        auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS
-        }
-    });
-}
 
-async function sendEmail(to, subject, html) {
-    if (!emailTransporter) {
-        console.log(`📧 [Dev Mode] Email to ${to}: ${subject}`);
-        return;
-    }
-    try {
-        await emailTransporter.sendMail({
-            from: `"MajesticEquity" <${process.env.EMAIL_FROM || process.env.SMTP_USER}>`,
-            to,
-            subject,
-            html
-        });
-        console.log(`📧 Email sent to ${to}: ${subject}`);
-    } catch (err) {
-        console.error('Email failed:', err.message);
-    }
-}
-
-// =============================================
-// TWILIO SMS CONFIG
-// =============================================
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
-
-let twilioClient = null;
-if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
-    twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-}
-
-async function sendSMS(to, body) {
-    if (!twilioClient || !TWILIO_PHONE_NUMBER) {
-        console.log(`\n\x1b[33m--- SMS GATEWAY MOCK (Dev Mode) ---\x1b[0m`);
-        console.log(`\x1b[36mTO:\x1b[0m ${to}`);
-        console.log(`\x1b[36mMESSAGE:\x1b[0m ${body}`);
-        console.log(`\x1b[33m-----------------------------------\x1b[0m\n`);
-        return;
-    }
-    try {
-        await twilioClient.messages.create({
-            body: body,
-            from: TWILIO_PHONE_NUMBER,
-            to: to
-        });
-        console.log(`📱 SMS Sent to ${to}`);
-    } catch (err) {
-        console.error('❌ Twilio SMS Error:', err.message);
-    }
+function publicBaseUrl(req) {
+    return process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get('host')}`;
 }
 
 // PDF Generation Helper
@@ -319,65 +230,8 @@ async function generatePreApprovalPDF(application) {
     });
 }
 
-// =============================================
-// MIDDLEWARE
-// =============================================
-function authenticateToken(req, res, next) {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+// Middlewares now imported from middlewares/auth.js (Fix #3)
 
-    if (!token) {
-        return res.status(401).json({ error: 'Access denied. No token provided.' });
-    }
-
-    jwt.verify(token, JWT_SECRET, (err, decoded) => {
-        if (err) {
-            return res.status(403).json({ error: 'Invalid or expired token.' });
-        }
-        req.userEmail = decoded.email;
-        req.userId = decoded.id;
-        req.userRole = decoded.role || 'borrower';
-        next();
-    });
-}
-
-function requireAdmin(req, res, next) {
-    if (req.userRole !== 'admin') {
-        return res.status(403).json({ error: 'Admin access required.' });
-    }
-    next();
-}
-
-async function getAgentProfileForUser(userId) {
-    if (!userId) return null;
-    return AgentProfile.findOne({ userId }).lean();
-}
-
-async function buildAccessUser(req) {
-    const user = await User.findById(req.userId).lean();
-    if (!user) return null;
-    const agentProfile = user.role === 'agent' ? await getAgentProfileForUser(user._id) : null;
-    return {
-        id: user._id.toString(),
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        agentProfile
-    };
-}
-
-async function requireApprovedAgent(req, res, next) {
-    try {
-        const accessUser = await buildAccessUser(req);
-        if (!accessUser || !canAgentInviteBorrower(accessUser)) {
-            return res.status(403).json({ error: 'Approved Ontario agent verification is required.' });
-        }
-        req.accessUser = accessUser;
-        next();
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-}
 
 function publicBaseUrl(req) {
     return process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get('host')}`;
@@ -2232,18 +2086,19 @@ app.post('/api/auth/resend-verification', async (req, res) => {
 });
 
 // =============================================
+// GLOBAL ERROR HANDLER (Fix #5)
+// Must be LAST middleware registered
+// =============================================
+app.use(errorHandler);
+
+// =============================================
 // SERVER START
 // =============================================
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`\n🚀 MajesticEquity Backend & WebSockets active at http://localhost:${PORT}`);
-    console.log(`\n   AUTH:    POST /api/auth/register, /api/auth/login`);
-    console.log(`   PLAID:   POST /api/create_link_token, /api/exchange_public_token`);
-    console.log(`   VERIFY:  POST /api/create_inquiry, /api/persona_complete, /api/credit_pull`);
-    console.log(`   DOCS:    POST /api/documents/upload | GET /api/documents | DELETE /api/documents/:id`);
-    console.log(`   APPS:    POST /api/applications/submit | GET /api/applications/mine`);
-    console.log(`   MSGS:    POST|GET /api/applications/:id/messages`);
-    console.log(`   ADMIN:   GET /api/admin/applications, /api/admin/users, /api/admin/stats`);
-    console.log(`   ADMIN:   PATCH /api/admin/applications/:id | POST /api/admin/create\n`);
+    logger.info(`🚀 MajesticEquity Backend & WebSockets active at http://localhost:${PORT}`);
+    logger.info(`   S3 Uploads: ${isS3Configured ? 'ENABLED (Cloud)' : 'DISABLED (Local Disk)'}`);
+    logger.info(`   Sentry: ${process.env.SENTRY_DSN ? 'ENABLED' : 'DISABLED'}`);
+    logger.info(`   Environment: ${process.env.NODE_ENV || 'development'}`);
 });

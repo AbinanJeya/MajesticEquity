@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node test/agentNetwork.test.js && node test/agentVerification.test.js"
+    "test": "jest --verbose",
+    "test:legacy": "node test/agentNetwork.test.js && node test/agentVerification.test.js"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -23,6 +24,9 @@
   },
   "homepage": "https://github.com/AbinanJeya/MortgageSite#readme",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1041.0",
+    "@aws-sdk/s3-request-presigner": "^3.1041.0",
+    "@sentry/node": "^10.51.0",
     "bcryptjs": "^3.0.3",
     "body-parser": "^2.2.2",
     "cors": "^2.8.6",
@@ -31,9 +35,11 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1",
     "helmet": "^8.1.0",
+    "joi": "^18.1.2",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.3.1",
     "multer": "^2.1.1",
+    "multer-s3": "^3.0.1",
     "nodemailer": "^8.0.3",
     "pdfkit": "^0.18.0",
     "plaid": "^41.4.0",
@@ -41,6 +47,12 @@
     "socket.io": "^4.8.3",
     "speakeasy": "^2.0.0",
     "stripe": "^20.4.1",
-    "twilio": "^5.13.0"
+    "twilio": "^5.13.0",
+    "winston": "^3.19.0",
+    "xss": "^1.0.15"
+  },
+  "devDependencies": {
+    "jest": "^30.3.0",
+    "supertest": "^7.2.2"
   }
 }
