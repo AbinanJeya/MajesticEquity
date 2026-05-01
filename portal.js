@@ -1320,6 +1320,42 @@ window.showAgentSignup = function() {
     window.initWaveAnimation('auth-wave-svg');
 }
 
+window.toggleClassDropdown = function() {
+    const options = document.getElementById('agent-class-options');
+    const chevron = document.getElementById('agent-class-chevron');
+    if (!options) return;
+    const isOpen = !options.classList.contains('pointer-events-none');
+    if (isOpen) {
+        options.classList.add('opacity-0', 'pointer-events-none', 'translate-y-[-8px]');
+        chevron.style.transform = 'rotate(0deg)';
+    } else {
+        options.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-[-8px]');
+        chevron.style.transform = 'rotate(180deg)';
+    }
+}
+
+window.selectAgentClass = function(value) {
+    const hidden = document.getElementById('agent-license-class');
+    const label = document.getElementById('agent-class-label');
+    const trigger = document.getElementById('agent-class-trigger');
+    if (hidden) hidden.value = value;
+    if (label) label.textContent = value;
+    if (trigger) trigger.classList.remove('text-white/20');
+    if (trigger) trigger.classList.add('text-white');
+    window.toggleClassDropdown();
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    const dropdown = document.getElementById('agent-class-dropdown');
+    const options = document.getElementById('agent-class-options');
+    if (dropdown && options && !dropdown.contains(e.target)) {
+        const chevron = document.getElementById('agent-class-chevron');
+        options.classList.add('opacity-0', 'pointer-events-none', 'translate-y-[-8px]');
+        if (chevron) chevron.style.transform = 'rotate(0deg)';
+    }
+});
+
 function renderAgentSignup() {
     return `
         <section class="min-h-screen flex items-center justify-center pt-24 pb-12 relative overflow-hidden" style="background: radial-gradient(ellipse 120% 80% at 50% 50%, rgba(30,50,80,1) 0%, rgba(15,30,46,1) 40%, rgba(10,20,35,1) 100%);">
@@ -1358,13 +1394,19 @@ function renderAgentSignup() {
                         </div>
                         <div>
                              <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Ontario Licence Class</label>
-                             <select id="agent-license-class" class="w-full bg-primary border border-white/10 rounded-2xl py-4 px-6 text-white focus:border-secondary-fixed/50 outline-none transition-all font-medium appearance-none">
-                                <option value="" disabled selected>Select Class</option>
-                                <option value="Mortgage Agent Level 1">Mortgage Agent Level 1</option>
-                                <option value="Mortgage Agent Level 2">Mortgage Agent Level 2</option>
-                                <option value="Mortgage Broker">Mortgage Broker</option>
-                                <option value="Principal Broker">Principal Broker</option>
-                             </select>
+                             <input type="hidden" id="agent-license-class" value="">
+                             <div class="relative" id="agent-class-dropdown">
+                                 <button type="button" onclick="window.toggleClassDropdown()" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-left text-white/20 focus:border-secondary-fixed/50 outline-none transition-all font-medium flex items-center justify-between" id="agent-class-trigger">
+                                     <span id="agent-class-label">Select Class</span>
+                                     <span class="material-symbols-outlined text-white/30 transition-transform duration-300" id="agent-class-chevron">expand_more</span>
+                                 </button>
+                                 <div id="agent-class-options" class="absolute top-full left-0 right-0 mt-2 rounded-2xl border border-white/10 overflow-hidden z-50 opacity-0 pointer-events-none translate-y-[-8px] transition-all duration-200" style="background: rgba(15,30,46,0.97); backdrop-filter: blur(20px);">
+                                     <div onclick="window.selectAgentClass('Mortgage Agent Level 1')" class="px-6 py-4 text-white/60 hover:text-white hover:bg-white/5 cursor-pointer transition-all text-sm font-medium border-b border-white/5">Mortgage Agent Level 1</div>
+                                     <div onclick="window.selectAgentClass('Mortgage Agent Level 2')" class="px-6 py-4 text-white/60 hover:text-white hover:bg-white/5 cursor-pointer transition-all text-sm font-medium border-b border-white/5">Mortgage Agent Level 2</div>
+                                     <div onclick="window.selectAgentClass('Mortgage Broker')" class="px-6 py-4 text-white/60 hover:text-white hover:bg-white/5 cursor-pointer transition-all text-sm font-medium border-b border-white/5">Mortgage Broker</div>
+                                     <div onclick="window.selectAgentClass('Principal Broker')" class="px-6 py-4 text-white/60 hover:text-white hover:bg-white/5 cursor-pointer transition-all text-sm font-medium">Principal Broker</div>
+                                 </div>
+                             </div>
                         </div>
                         <div class="md:col-span-2">
                              <label class="block text-[10px] font-black text-secondary-fixed uppercase tracking-widest mb-3 px-2">Brokerage Name</label>
