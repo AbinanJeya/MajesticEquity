@@ -23,22 +23,20 @@ The codebase is a full-stack Node.js and MongoDB application with a custom, high
 - **Database:** MongoDB with Mongoose (hosted on MongoDB Atlas)
 - **Real-Time:** Socket.IO
 - **Security:** JWT, bcryptjs, helmet, express-rate-limit, CORS
-- **Files:** multer (uploads), pdfkit (PDF generation)
-- **Integrations:** Plaid, Stripe, Persona, Experian, Twilio (SMS), SendGrid (SMTP)
+- **Files:** multer-s3 (AWS S3 Persistence), pdfkit (PDF generation)
+- **Observability:** Winston (Structured Logging), Sentry (Error Tracking)
 
-## Core Files
+## Core Files & Architecture
 
-- `server.js` — Main backend server, API routes, websocket setup, and core business logic.
+- `server.js` — Modular Express entry point (routes & middleware registration).
+- `services/` — Extracted business logic (AWS S3 Uploads, Database Pooling, Logging, Notifications).
+- `middlewares/` — Centralized security, RBAC auth, and Joi input validation.
 - `portal.js` — Massive monolith frontend logic for auth, dashboards, and all interactive features.
-- `index.html` — App shell and main DOM mount point for the vanilla JS application.
-- `style.css` — Core styling following the premium editorial design system.
-- `render.yaml` — Blueprint file for automated deployment on Render.com.
-- `Procfile` — Web service configuration for hosting platforms.
-- `config.js` — Agent-specific branding and content configuration.
 - `models/` — MongoDB schemas for Users, Applications, Documents, and Plaid Items.
-- `utils/fnmExporter.js` — Fannie Mae 3.2 export utility.
 - `PROJECT_OVERVIEW.md` — This architectural summary.
-- `ai_rules.md` — AI context and critical development guidelines.
+- `AI_CONTEXT.md` — The absolute source of truth for AI assistants and project context.
+- `production_audit.md` — Comprehensive production roadmap and security audit.
+
 
 ## Infrastructure & Deployment
 
