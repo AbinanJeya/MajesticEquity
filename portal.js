@@ -416,7 +416,6 @@ window.renderLandingPage = function() {
                         </div>
                         <div>
                             <div class="text-white font-headline font-bold">Institutional Security</div>
-                            <div class="text-on-primary-container text-xs">SOC2 Type II Compliant</div>
                         </div>
                     </div>
                     <div class="h-2 w-full bg-white/5 rounded-full overflow-hidden">
@@ -437,8 +436,6 @@ window.renderLandingPage = function() {
                 <div class="flex flex-wrap justify-center items-center gap-x-16 gap-y-12 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
                     <span class="font-headline font-extrabold text-2xl tracking-tighter text-on-surface">Plaid</span>
                     <span class="font-headline font-extrabold text-2xl tracking-tighter text-on-surface">AWS</span>
-                    <div class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface">shield</span><span class="font-headline font-bold text-lg text-on-surface">SOC2 Certified</span></div>
-                    <span class="font-headline font-extrabold text-2xl tracking-tighter text-on-surface">TransUnion</span>
                 </div>
             </div>
         </section>
